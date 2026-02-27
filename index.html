@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Random Folder Music Player</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 18px; line-height: 1.35; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    button { padding: 8px 12px; }
+    input[type="range"] { width: 240px; }
+    .box { padding: 10px; border: 1px solid #ddd; border-radius: 10px; }
+    .muted { color: #666; font-size: 0.95em; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <h2>Random Folder Music Player</h2>
+
+  <div class="box">
+    <div class="row">
+      <button id="pick">Pick folder…</button>
+      <button id="start" disabled>Start</button>
+      <button id="next" disabled>Next random</button>
+      <label class="row" style="gap:8px;">
+        Speed
+        <input id="speed" type="range" min="0.5" max="2.0" step="0.01" value="1.0" />
+        <span id="speedVal" class="mono">1.00×</span>
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="row" style="gap:8px;">
+        <input id="avoidRepeats" type="checkbox" checked />
+        Avoid immediate repeats
+      </label>
+    </div>
+
+    <div class="muted">
+      Folder: <span id="folderName" class="mono">(none)</span><br/>
+      Tracks found: <span id="count" class="mono">0</span><br/>
+      Now playing: <span id="now" class="mono">(nothing)</span>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:14px;">
+    <audio id="audio" controls preload="metadata" style="width: min(820px, 100%);"></audio>
+  </div>
+
+  <p class="muted">
+    Supported formats depend on Chrome (usually mp3, m4a/aac, ogg, wav). This runs locally; nothing is uploaded.
+  </p>
+
+<script>
+(() => {
+  const pickBtn = document.getElementById('pick');
+  const startBtn = document.getElementById('start');
+  const nextBtn  = document.getElementById('next');
+  const speed    = document.getElementById('speed');
+  const speedVal = document.getElementById('speedVal');
+  const avoidRepeats = document.getElementById('avoidRepeats');
+
+  const folderName = document.getElementById('folderName');
+  const countEl = document.getElementById('count');
+  const nowEl = document.getElementById('now');
+  const audio = document.getElementById('audio');
+
+  /** @type {FileSystemDirectoryHandle | null} */
+  let dirHandle = null;
+
+  /** @type {{name:string, file:File}[]} */
+  let tracks = [];
+
+  let lastIndex = -1;
+
+  const exts = new Set(['mp3','m4a','aac','ogg','wav','flac','webm','mp4']); // flac maybe, depends on build
+
+  function setUIEnabled(enabled) {
+    startBtn.disabled = !enabled;
+    nextBtn.disabled  = !enabled;
+  }
+
+  function updateSpeed() {
+    const rate = Number(speed.value);
+    audio.playbackRate = rate;
+    speedVal.textContent = rate.toFixed(2) + '×';
+  }
+
+  speed.addEventListener('input', updateSpeed);
+  updateSpeed();
+
+  async function* walkDir(handle, pathPrefix = '') {
+    for await (const [name, child] of handle.entries()) {
+      const full = pathPrefix ? `${pathPrefix}/${name}` : name;
+      if (child.kind === 'file') yield { handle: child, path: full };
+      else if (child.kind === 'directory') yield* walkDir(child, full);
+    }
+  }
+
+  async function loadTracksFromDirectory(handle) {
+    const list = [];
+    for await (const item of walkDir(handle)) {
+      const lower = item.path.toLowerCase();
+      const dot = lower.lastIndexOf('.');
+      const ext = dot >= 0 ? lower.slice(dot + 1) : '';
+      if (!exts.has(ext)) continue;
+
+      const file = await item.handle.getFile();
+      list.push({ name: item.path, file });
+    }
+    return list;
+  }
+
+  function pickRandomIndex() {
+    if (!tracks.length) return -1;
+    if (!avoidRepeats.checked || tracks.length === 1) {
+      return Math.floor(Math.random() * tracks.length);
+    }
+    let i;
+    do { i = Math.floor(Math.random() * tracks.length); }
+    while (i === lastIndex);
+    return i;
+  }
+
+  async function playRandom() {
+    const i = pickRandomIndex();
+    if (i < 0) return;
+
+    // Revoke old object URL to avoid memory growth
+    if (audio.dataset.url) URL.revokeObjectURL(audio.dataset.url);
+
+    lastIndex = i;
+    const t = tracks[i];
+    const url = URL.createObjectURL(t.file);
+    audio.dataset.url = url;
+
+    audio.src = url;
+    nowEl.textContent = t.name;
+    updateSpeed();
+
+    try {
+      await audio.play(); // requires a user gesture at least once
+    } catch (e) {
+      // If autoplay blocks, user can press play in the audio controls
+      console.warn('Play blocked:', e);
+    }
+  }
+
+  pickBtn.addEventListener('click', async () => {
+    if (!window.showDirectoryPicker) {
+      alert('This browser does not support folder picking (showDirectoryPicker). Use Chrome/Chromium on Chrome OS.');
+      return;
+    }
+
+    try {
+      dirHandle = await window.showDirectoryPicker();
+      folderName.textContent = dirHandle.name;
+
+      tracks = await loadTracksFromDirectory(dirHandle);
+      countEl.textContent = String(tracks.length);
+
+      if (!tracks.length) {
+        setUIEnabled(false);
+        nowEl.textContent = '(no supported audio files found)';
+        return;
+      }
+
+      setUIEnabled(true);
+      nowEl.textContent = '(ready)';
+    } catch (err) {
+      console.warn(err);
+    }
+  });
+
+  startBtn.addEventListener('click', playRandom);
+  nextBtn.addEventListener('click', playRandom);
+
+  audio.addEventListener('ended', playRandom);
+
+  // Optional: if an error occurs (unsupported codec), skip to next
+  audio.addEventListener('error', () => {
+    console.warn('Audio error, skipping…');
+    playRandom();
+  });
+})();
+</script>
+</body>
+</html>
