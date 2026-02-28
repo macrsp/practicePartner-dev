@@ -2,7 +2,7 @@ name: Update Repo Context
 
 on:
   push:
-    branches:
+    branches-ignore:
       - main
     paths-ignore:
       - repo-context.xml
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout current branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -36,10 +36,10 @@ jobs:
       - name: Upload repo context artifact
         uses: actions/upload-artifact@v4
         with:
-          name: repo-context
+          name: repo-context-${{ github.ref_name }}
           path: repo-context.xml
 
-      - name: Commit updated repo context
+      - name: Commit updated repo context to branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -51,4 +51,4 @@ jobs:
           fi
 
           git commit -m "chore: refresh repo context"
-          git push
+          git push origin HEAD:${GITHUB_REF_NAME}
