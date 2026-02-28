@@ -1,188 +1,321 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Random Folder Music Player</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 18px; line-height: 1.35; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
-    button { padding: 8px 12px; }
-    input[type="range"] { width: 240px; }
-    .box { padding: 10px; border: 1px solid #ddd; border-radius: 10px; }
-    .muted { color: #666; font-size: 0.95em; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Suzuki Practice Partner v0.2</title>
+<style>
+body { font-family: system-ui; margin:20px; }
+.row { margin:8px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+button { padding:6px 10px; }
+select,input { padding:4px; }
+.small { font-size:0.9em; color:#555; }
+.box { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
+</style>
 </head>
 <body>
-  <h2>Random Folder Music Player</h2>
 
-  <div class="box">
-    <div class="row">
-      <button id="pick">Pick folder…</button>
-      <button id="start" disabled>Start</button>
-      <button id="next" disabled>Next random</button>
-      <label class="row" style="gap:8px;">
-        Speed
-        <input id="speed" type="range" min="0.5" max="2.0" step="0.01" value="1.0" />
-        <span id="speedVal" class="mono">1.00×</span>
-      </label>
-    </div>
+<h2>Suzuki Practice Partner</h2>
 
-    <div class="row">
-      <label class="row" style="gap:8px;">
-        <input id="avoidRepeats" type="checkbox" checked />
-        Avoid immediate repeats
-      </label>
-    </div>
+<div class="box">
+  <div class="row">
+    Profile:
+    <select id="profileSelect"></select>
+    <button id="newProfile">New</button>
+  </div>
+</div>
 
-    <div class="muted">
-      Folder: <span id="folderName" class="mono">(none)</span><br/>
-      Tracks found: <span id="count" class="mono">0</span><br/>
-      Now playing: <span id="now" class="mono">(nothing)</span>
-    </div>
+<div class="box">
+  <div class="row">
+    <button id="pickFolder">Pick Music Folder</button>
+    <span id="trackCount" class="small"></span>
   </div>
 
-  <div class="row" style="margin-top:14px;">
-    <audio id="audio" controls preload="metadata" style="width: min(820px, 100%);"></audio>
+  <div class="row">
+    <select id="trackSelect"></select>
   </div>
 
-  <p class="muted">
-    Supported formats depend on Chrome (usually mp3, m4a/aac, ogg, wav). This runs locally; nothing is uploaded.
-  </p>
+  <div class="row">
+    <button id="markA">Mark A</button>
+    <button id="markB">Mark B</button>
+    <button id="saveSection">Save Section</button>
+    <span id="abDisplay" class="small"></span>
+  </div>
+
+  <div class="row">
+    <select id="sectionSelect"></select>
+    <button id="playSection">Play</button>
+    <button id="adaptivePlay">Adaptive Next</button>
+    <label>
+      Loop <input type="checkbox" id="loopToggle">
+    </label>
+  </div>
+
+  <div class="row">
+    Speed
+    <input type="range" id="speed" min="0.5" max="1.5" step="0.01" value="1.0">
+    <span id="speedVal">1.00</span>
+  </div>
+
+  <div class="row small">
+    Mastery: <span id="masteryDisplay">–</span>
+  </div>
+</div>
+
+<audio id="audio" controls style="width:100%"></audio>
 
 <script>
-(() => {
-  const pickBtn = document.getElementById('pick');
-  const startBtn = document.getElementById('start');
-  const nextBtn  = document.getElementById('next');
-  const speed    = document.getElementById('speed');
-  const speedVal = document.getElementById('speedVal');
-  const avoidRepeats = document.getElementById('avoidRepeats');
+/* ================================
+   DATA LAYER
+================================ */
 
-  const folderName = document.getElementById('folderName');
-  const countEl = document.getElementById('count');
-  const nowEl = document.getElementById('now');
-  const audio = document.getElementById('audio');
+const DB_NAME = "suzukiPracticeDB";
+let db;
+let currentProfile = null;
 
-  /** @type {FileSystemDirectoryHandle | null} */
-  let dirHandle = null;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
 
-  /** @type {{name:string, file:File}[]} */
-  let tracks = [];
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
 
-  let lastIndex = -1;
+      db.createObjectStore("profiles", { keyPath: "id", autoIncrement:true });
+      db.createObjectStore("sections", { keyPath: "id", autoIncrement:true });
+      db.createObjectStore("plays", { keyPath: "id", autoIncrement:true });
+    };
 
-  const exts = new Set(['mp3','m4a','aac','ogg','wav','flac','webm','mp4']); // flac maybe, depends on build
+    req.onsuccess = () => { db = req.result; resolve(); };
+    req.onerror = reject;
+  });
+}
 
-  function setUIEnabled(enabled) {
-    startBtn.disabled = !enabled;
-    nextBtn.disabled  = !enabled;
-  }
+function tx(store, mode="readonly") {
+  return db.transaction(store, mode).objectStore(store);
+}
 
-  function updateSpeed() {
-    const rate = Number(speed.value);
-    audio.playbackRate = rate;
-    speedVal.textContent = rate.toFixed(2) + '×';
-  }
+/* ================================
+   PROFILE SYSTEM
+================================ */
 
-  speed.addEventListener('input', updateSpeed);
-  updateSpeed();
+async function loadProfiles() {
+  const store = tx("profiles");
+  const req = store.getAll();
+  req.onsuccess = () => {
+    const sel = document.getElementById("profileSelect");
+    sel.innerHTML = "";
+    req.result.forEach(p=>{
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    if(req.result.length){
+      currentProfile = req.result[0].id;
+      sel.value = currentProfile;
+    }
+  };
+}
 
-  async function* walkDir(handle, pathPrefix = '') {
-    for await (const [name, child] of handle.entries()) {
-      const full = pathPrefix ? `${pathPrefix}/${name}` : name;
-      if (child.kind === 'file') yield { handle: child, path: full };
-      else if (child.kind === 'directory') yield* walkDir(child, full);
+document.getElementById("newProfile").onclick = () => {
+  const name = prompt("Profile name?");
+  if(!name) return;
+  tx("profiles","readwrite").add({ name });
+  setTimeout(loadProfiles,200);
+};
+
+document.getElementById("profileSelect").onchange = e=>{
+  currentProfile = Number(e.target.value);
+  loadSections();
+};
+
+/* ================================
+   TRACK LOADING
+================================ */
+
+let tracks = [];
+let currentTrack = null;
+
+document.getElementById("pickFolder").onclick = async ()=>{
+  const dir = await window.showDirectoryPicker();
+  tracks = [];
+  for await (const [name,handle] of dir.entries()) {
+    if(handle.kind==="file" && name.endsWith(".mp3")){
+      const file = await handle.getFile();
+      tracks.push({ name, file });
     }
   }
+  const sel = document.getElementById("trackSelect");
+  sel.innerHTML="";
+  tracks.forEach((t,i)=>{
+    const opt = document.createElement("option");
+    opt.value=i;
+    opt.textContent=t.name;
+    sel.appendChild(opt);
+  });
+  document.getElementById("trackCount").textContent = tracks.length+" tracks loaded";
+};
 
-  async function loadTracksFromDirectory(handle) {
-    const list = [];
-    for await (const item of walkDir(handle)) {
-      const lower = item.path.toLowerCase();
-      const dot = lower.lastIndexOf('.');
-      const ext = dot >= 0 ? lower.slice(dot + 1) : '';
-      if (!exts.has(ext)) continue;
+document.getElementById("trackSelect").onchange = e=>{
+  currentTrack = tracks[e.target.value];
+  const url = URL.createObjectURL(currentTrack.file);
+  audio.src = url;
+  loadSections();
+};
 
-      const file = await item.handle.getFile();
-      list.push({ name: item.path, file });
-    }
-    return list;
-  }
+/* ================================
+   SECTION SYSTEM
+================================ */
 
-  function pickRandomIndex() {
-    if (!tracks.length) return -1;
-    if (!avoidRepeats.checked || tracks.length === 1) {
-      return Math.floor(Math.random() * tracks.length);
-    }
-    let i;
-    do { i = Math.floor(Math.random() * tracks.length); }
-    while (i === lastIndex);
-    return i;
-  }
+let A=null,B=null;
 
-  async function playRandom() {
-    const i = pickRandomIndex();
-    if (i < 0) return;
+document.getElementById("markA").onclick = ()=>{
+  A = audio.currentTime;
+  updateAB();
+};
 
-    // Revoke old object URL to avoid memory growth
-    if (audio.dataset.url) URL.revokeObjectURL(audio.dataset.url);
+document.getElementById("markB").onclick = ()=>{
+  B = audio.currentTime;
+  updateAB();
+};
 
-    lastIndex = i;
-    const t = tracks[i];
-    const url = URL.createObjectURL(t.file);
-    audio.dataset.url = url;
+function updateAB(){
+  document.getElementById("abDisplay").textContent =
+    A!==null && B!==null ? 
+    `A=${A.toFixed(1)} B=${B.toFixed(1)}` : "";
+}
 
-    audio.src = url;
-    nowEl.textContent = t.name;
-    updateSpeed();
+document.getElementById("saveSection").onclick = ()=>{
+  if(A===null||B===null||!currentTrack) return;
+  const name = prompt("Section name?");
+  tx("sections","readwrite").add({
+    profileId: currentProfile,
+    trackName: currentTrack.name,
+    start: Math.min(A,B),
+    end: Math.max(A,B),
+    mastery:0,
+    playCount:0,
+    lastPlayed:0
+  });
+  setTimeout(loadSections,200);
+};
 
-    try {
-      await audio.play(); // requires a user gesture at least once
-    } catch (e) {
-      // If autoplay blocks, user can press play in the audio controls
-      console.warn('Play blocked:', e);
-    }
-  }
+function loadSections(){
+  const store = tx("sections");
+  const req = store.getAll();
+  req.onsuccess = ()=>{
+    const sel = document.getElementById("sectionSelect");
+    sel.innerHTML="";
+    req.result
+      .filter(s=>s.profileId===currentProfile && (!currentTrack||s.trackName===currentTrack.name))
+      .forEach(s=>{
+        const opt = document.createElement("option");
+        opt.value=s.id;
+        opt.textContent=`${s.trackName} (${s.start.toFixed(1)}-${s.end.toFixed(1)})`;
+        sel.appendChild(opt);
+      });
+  };
+}
 
-  pickBtn.addEventListener('click', async () => {
-    if (!window.showDirectoryPicker) {
-      alert('This browser does not support folder picking (showDirectoryPicker). Use Chrome/Chromium on Chrome OS.');
-      return;
-    }
+/* ================================
+   PLAY + LOOP
+================================ */
 
-    try {
-      dirHandle = await window.showDirectoryPicker();
-      folderName.textContent = dirHandle.name;
+const audio = document.getElementById("audio");
 
-      tracks = await loadTracksFromDirectory(dirHandle);
-      countEl.textContent = String(tracks.length);
+document.getElementById("speed").oninput = e=>{
+  audio.playbackRate = e.target.value;
+  document.getElementById("speedVal").textContent = Number(e.target.value).toFixed(2);
+};
 
-      if (!tracks.length) {
-        setUIEnabled(false);
-        nowEl.textContent = '(no supported audio files found)';
-        return;
+audio.addEventListener("timeupdate", ()=>{
+  const secId = Number(document.getElementById("sectionSelect").value);
+  if(!secId) return;
+  tx("sections").get(secId).onsuccess=e=>{
+    const s=e.target.result;
+    if(!s) return;
+    if(audio.currentTime>=s.end){
+      if(document.getElementById("loopToggle").checked){
+        audio.currentTime=s.start;
+      } else {
+        audio.pause();
+        logPlay(s);
       }
-
-      setUIEnabled(true);
-      nowEl.textContent = '(ready)';
-    } catch (err) {
-      console.warn(err);
     }
+  };
+});
+
+document.getElementById("playSection").onclick = ()=>{
+  const secId = Number(document.getElementById("sectionSelect").value);
+  tx("sections").get(secId).onsuccess=e=>{
+    const s=e.target.result;
+    if(!s) return;
+    audio.currentTime=s.start;
+    audio.play();
+  };
+};
+
+/* ================================
+   LOGGING + MASTERY
+================================ */
+
+function logPlay(section){
+  const now = Date.now();
+  section.playCount++;
+  section.lastPlayed=now;
+
+  const days = (now - section.lastPlayed)/(1000*60*60*24);
+  section.mastery = Math.min(1,
+    0.3*(section.playCount/10) + 0.7*(1/(1+days))
+  );
+
+  tx("sections","readwrite").put(section);
+  tx("plays","readwrite").add({
+    sectionId: section.id,
+    timestamp: now,
+    speed: audio.playbackRate
   });
 
-  startBtn.addEventListener('click', playRandom);
-  nextBtn.addEventListener('click', playRandom);
+  document.getElementById("masteryDisplay").textContent =
+    section.mastery.toFixed(2);
+}
 
-  audio.addEventListener('ended', playRandom);
+/* ================================
+   ADAPTIVE SELECTION
+================================ */
 
-  // Optional: if an error occurs (unsupported codec), skip to next
-  audio.addEventListener('error', () => {
-    console.warn('Audio error, skipping…');
-    playRandom();
-  });
+document.getElementById("adaptivePlay").onclick = ()=>{
+  const store = tx("sections");
+  store.getAll().onsuccess=e=>{
+    const sections=e.target.result
+      .filter(s=>s.profileId===currentProfile);
+    if(!sections.length) return;
+
+    const weighted = sections.map(s=>{
+      const days = (Date.now()-s.lastPlayed)/(1000*60*60*24);
+      const priority = (1-s.mastery)*(1+days);
+      return { s, priority };
+    });
+
+    weighted.sort((a,b)=>b.priority-a.priority);
+    const chosen = weighted[0].s;
+
+    audio.currentTime=chosen.start;
+    audio.play();
+
+    document.getElementById("sectionSelect").value=chosen.id;
+  };
+};
+
+/* ================================
+   INIT
+================================ */
+
+(async function(){
+  await openDB();
+  await loadProfiles();
 })();
 </script>
+
 </body>
 </html>
