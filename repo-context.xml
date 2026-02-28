@@ -65,28 +65,6 @@ styles.css
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/constants.js">
-export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 2;
-
-export const STORES = {
-  PROFILES: "profiles",
-  SECTIONS: "sections",
-  PLAYS: "plays",
-};
-
-export const DEFAULT_PROFILE_NAME = "Default";
-
-export const SUPPORTED_AUDIO_EXTENSIONS = [
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".flac",
-];
-</file>
-
 <file path="src/ui.js">
 import { createSectionLabel, formatTime } from "./utils.js";
 
@@ -1409,6 +1387,35 @@ function handleError(error) {
   console.error(error);
   window.alert(error.message || "Something went wrong.");
 }
+</file>
+
+<file path="src/constants.js">
+export const DB_NAME = "suzukiDB_v4";
+export const DB_VERSION = 3;
+
+export const STORES = {
+  PROFILES: "profiles",
+  SECTIONS: "sections",
+  PLAYS: "plays",
+  SETTINGS: "settings",
+};
+
+export const SETTINGS_KEYS = {
+  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
+  MUSIC_FOLDER_NAME: "musicFolderName",
+  LAST_TRACK_NAME: "lastTrackName",
+};
+
+export const DEFAULT_PROFILE_NAME = "Default";
+
+export const SUPPORTED_AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+];
 </file>
 
 <file path="src/db.js">
