@@ -23,6 +23,7 @@
 - Prefer browser-native APIs over added dependencies.
 - Preserve compatibility with the existing IndexedDB database when possible.
 - File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
+- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
 - `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
 
 ## File header convention
@@ -42,6 +43,7 @@ Keep headers concise and high-signal. Do not turn them into long prose blocks.
 - When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
 - When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
 - When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
+- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
 - If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
 - Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules.
 

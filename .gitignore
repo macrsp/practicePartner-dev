@@ -1,2 +1,7 @@
+# @role ignore-rules
+# @owns repository-local ignore patterns for generated files and machine-specific clutter
+# @not-owns build config, workflow behavior, or architecture guidance
+# @notes Keep this file limited to ignore behavior and concise comments.
+
 dist/
 .DS_Store
