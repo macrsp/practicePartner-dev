@@ -3,6 +3,8 @@ import { clamp } from "./utils.js";
 const COLORS = {
   background: "#f8fafc",
   waveform: "#cbd5e1",
+  playedFill: "rgba(249, 115, 22, 0.12)",
+  playheadLine: "#f97316",
   selectionFill: "rgba(59, 130, 246, 0.20)",
   selectionLine: "#2563eb",
   text: "#6b7280",
@@ -19,6 +21,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
   let audioBuffer = null;
   let selection = { start: null, end: null };
+  let playbackTime = null;
   let dragging = false;
 
   function resize() {
@@ -46,6 +49,11 @@ export function createWaveform({ mountEl, onSelectionChange }) {
       start: Number.isFinite(selection.start) ? clamp(selection.start, 0, duration) : null,
       end: Number.isFinite(selection.end) ? clamp(selection.end, 0, duration) : null,
     };
+  }
+
+  function getNormalizedPlaybackTime() {
+    const duration = getDuration();
+    return Number.isFinite(playbackTime) ? clamp(playbackTime, 0, duration) : null;
   }
 
   function drawPlaceholder(message) {
@@ -114,7 +122,9 @@ export function createWaveform({ mountEl, onSelectionChange }) {
       ctx.fillRect(x, (1 + min) * amplitude, 1, Math.max(1, (max - min) * amplitude));
     }
 
+    drawPlaybackRegion();
     drawSelection();
+    drawPlayhead();
   }
 
   function drawMarker(time, label) {
@@ -133,6 +143,41 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(label, Math.min(canvas.width - 20, x + 4), 6);
+  }
+
+  function drawPlaybackRegion() {
+    const currentTime = getNormalizedPlaybackTime();
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    if (x <= 0) {
+      return;
+    }
+
+    ctx.fillStyle = COLORS.playedFill;
+    ctx.fillRect(0, 0, x, canvas.height);
+  }
+
+  function drawPlayhead() {
+    const currentTime = getNormalizedPlaybackTime();
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    ctx.strokeStyle = COLORS.playheadLine;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+    ctx.lineWidth = 1;
   }
 
   function drawSelection() {
@@ -172,6 +217,11 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     }
   }
 
+  function setPlaybackTime(nextPlaybackTime) {
+    playbackTime = Number.isFinite(nextPlaybackTime) ? nextPlaybackTime : null;
+    draw();
+  }
+
   async function loadFile(file) {
     drawPlaceholder("Loading waveform…");
 
@@ -188,6 +238,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
     try {
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      playbackTime = 0;
     } finally {
       if (audioContext.close) {
         await audioContext.close();
@@ -200,6 +251,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   function clear() {
     audioBuffer = null;
     selection = { start: null, end: null };
+    playbackTime = null;
     draw();
   }
 
@@ -239,6 +291,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   return {
     clear,
     loadFile,
+    setPlaybackTime,
     setSelection,
     getSelection: () => ({ ...getNormalizedSelection() }),
   };
