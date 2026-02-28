@@ -35,6 +35,12 @@ export function openDatabase() {
             autoIncrement: true,
           });
 
+      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+        database.createObjectStore(STORES.SETTINGS, {
+          keyPath: "key",
+        });
+      }
+
       if (!profilesStore.indexNames.contains("byName")) {
         profilesStore.createIndex("byName", "name", { unique: false });
       }
@@ -121,4 +127,14 @@ export function deleteSection(sectionId) {
 
 export function addPlayLog(play) {
   return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
 }
