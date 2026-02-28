@@ -1,3 +1,10 @@
+/**
+ * @role controller
+ * @owns default-profile bootstrap, profile creation, profile refresh, profile selection state transitions
+ * @not-owns section logic, track logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section refreshes after profile changes.
+ */
+
 import { DEFAULT_PROFILE_NAME } from "./constants.js";
 import { addProfile, getAllProfiles } from "./db.js";
 import { state } from "./state.js";

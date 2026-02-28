@@ -1,3 +1,10 @@
+/**
+ * @role shared-constants
+ * @owns database names, schema versions, store names, settings keys, default constants
+ * @not-owns runtime state, persistence behavior, or UI logic
+ * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
+ */
+
 export const DB_NAME = "suzukiDB_v4";
 export const DB_VERSION = 3;
 

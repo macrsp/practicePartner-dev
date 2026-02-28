@@ -1,3 +1,10 @@
+/*
+ * @role stylesheet
+ * @owns presentation, layout, spacing, colors, responsive behavior, and component states
+ * @not-owns markup structure or runtime behavior
+ * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
+ */
+
 :root {
   --bg: #f4f6f8;
   --card: #ffffff;

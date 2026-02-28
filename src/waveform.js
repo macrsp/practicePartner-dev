@@ -1,3 +1,10 @@
+/**
+ * @role renderer
+ * @owns waveform decoding, peak caching, canvas rendering, drag selection, playback-position visualization
+ * @not-owns audio playback control, persistence, or section business rules
+ * @notes Keep redraws efficient; cache derived waveform data when possible.
+ */
+
 import { clamp } from "./utils.js";
 
 const COLORS = {

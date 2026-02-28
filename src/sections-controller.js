@@ -1,3 +1,10 @@
+/**
+ * @role controller
+ * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking
+ * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
+ * @notes This controller coordinates with track loading when a section references another track.
+ */
+
 import {
   addPlayLog,
   addSection,
@@ -20,6 +27,7 @@ export function createSectionsController({
   selectTrackByIndex,
   refreshSelectionUi,
   refreshMasteryUi,
+  syncPlaybackUi,
   handleError,
 }) {
   async function refreshSections() {
@@ -176,6 +184,7 @@ export function createSectionsController({
       refreshMasteryUi();
 
       audio.currentTime = section.start;
+      syncPlaybackUi();
       await audio.play();
     } catch (error) {
       handleError(error);
@@ -220,11 +229,13 @@ export function createSectionsController({
 
     if (elements.loopToggle.checked) {
       audio.currentTime = activeSection.start;
+      syncPlaybackUi();
       return;
     }
 
     audio.pause();
     audio.currentTime = activeSection.end;
+    syncPlaybackUi();
 
     const completedSectionId = state.currentPlayingSectionId;
     state.currentPlayingSectionId = null;

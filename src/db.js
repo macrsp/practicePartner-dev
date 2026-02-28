@@ -1,3 +1,10 @@
+/**
+ * @role persistence-layer
+ * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
+ * @not-owns business rules, UI updates, or controller orchestration
+ * @notes Preserve compatibility with existing user data whenever possible.
+ */
+
 import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
 
 let dbPromise = null;

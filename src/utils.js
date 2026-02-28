@@ -1,3 +1,10 @@
+/**
+ * @role utility-module
+ * @owns pure helpers for formatting, sorting, normalization, clamping, and adaptive-choice logic
+ * @not-owns DOM updates, persistence, or mutable application state
+ * @notes Prefer adding only side-effect-free helpers here.
+ */
+
 import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
 
 const DAY_MS = 1000 * 60 * 60 * 24;

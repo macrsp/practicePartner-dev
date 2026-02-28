@@ -1,6 +1,18 @@
+/**
+ * @role controller
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, waveform playback sync
+ * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
+ * @notes Keep folder persistence delegated to music-folder-store.js.
+ */
+
 import { state } from "./state.js";
 import { elements, renderTracks, setSpeedDisplay, setTrackCount } from "./ui.js";
 import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "./utils.js";
+import {
+  getRememberedMusicFolder,
+  rememberLastTrackName,
+  rememberMusicFolder,
+} from "./music-folder-store.js";
 
 export function createTracksController({
   audio,
@@ -10,44 +22,130 @@ export function createTracksController({
   refreshMasteryUi,
   handleError,
 }) {
+  async function restoreRememberedFolder() {
+    try {
+      const remembered = await getRememberedMusicFolder();
+
+      if (!remembered.handle) {
+        return;
+      }
+
+      state.currentFolderHandle = remembered.handle;
+      state.currentFolderName = remembered.name || remembered.handle.name || null;
+
+      const permissionState = await queryDirectoryPermission(remembered.handle);
+
+      if (permissionState === "granted") {
+        await loadTracksFromDirectory(remembered.handle, {
+          preferredTrackName: remembered.lastTrackName,
+        });
+        return;
+      }
+
+      showRememberedFolderStatus();
+    } catch (error) {
+      console.warn("Unable to restore remembered music folder.", error);
+      setTrackCount("No folder selected.");
+    }
+  }
+
   async function pickMusicFolder() {
     try {
       if (!window.showDirectoryPicker) {
         throw new Error("This browser does not support folder selection.");
       }
 
-      const previousTrackName = state.currentTrack?.name ?? null;
-      const directoryHandle = await window.showDirectoryPicker();
-      const nextTracks = [];
+      const remembered = await getRememberedMusicFolder();
 
-      for await (const [name, handle] of directoryHandle.entries()) {
-        if (handle.kind !== "file" || !isSupportedAudioFile(name)) {
-          continue;
+      if (state.currentFolderHandle && !state.tracks.length) {
+        const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
+
+        if (permissionState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
         }
 
-        const file = await handle.getFile();
-        nextTracks.push({ name, file });
+        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+
+        if (requestedState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
+        }
       }
 
-      nextTracks.sort(compareByName);
-      state.tracks = nextTracks;
+      const previousTrackName = state.currentTrack?.name ?? remembered.lastTrackName ?? null;
+      const directoryHandle = await window.showDirectoryPicker();
 
-      renderTracks(state.tracks, null);
-      setTrackCount(summarizeTrackCount(nextTracks.length));
-
-      if (!nextTracks.length) {
-        clearCurrentTrack();
-        return;
-      }
-
-      const nextIndex = previousTrackName
-        ? nextTracks.findIndex((track) => track.name === previousTrackName)
-        : 0;
-
-      await selectTrackByIndex(nextIndex >= 0 ? nextIndex : 0);
+      await rememberSelectedMusicFolder(directoryHandle);
+      await loadTracksFromDirectory(directoryHandle, {
+        preferredTrackName: previousTrackName,
+      });
     } catch (error) {
       handleError(error);
     }
+  }
+
+  async function rememberSelectedMusicFolder(directoryHandle) {
+    state.currentFolderHandle = directoryHandle;
+    state.currentFolderName = directoryHandle.name ?? null;
+    await rememberMusicFolder(directoryHandle);
+  }
+
+  async function loadTracksFromDirectory(directoryHandle, { preferredTrackName = null } = {}) {
+    const nextTracks = [];
+
+    for await (const [name, handle] of directoryHandle.entries()) {
+      if (handle.kind !== "file" || !isSupportedAudioFile(name)) {
+        continue;
+      }
+
+      const file = await handle.getFile();
+      nextTracks.push({ name, file });
+    }
+
+    nextTracks.sort(compareByName);
+    state.tracks = nextTracks;
+
+    renderTracks(state.tracks, null);
+    setTrackCount(summarizeTrackCount(nextTracks.length));
+
+    if (!nextTracks.length) {
+      clearCurrentTrack();
+      return;
+    }
+
+    const nextIndex = preferredTrackName
+      ? nextTracks.findIndex((track) => track.name === preferredTrackName)
+      : 0;
+
+    await selectTrackByIndex(nextIndex >= 0 ? nextIndex : 0);
+  }
+
+  async function queryDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.queryPermission) {
+      return "prompt";
+    }
+
+    return directoryHandle.queryPermission({ mode: "read" });
+  }
+
+  async function requestDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.requestPermission) {
+      return "granted";
+    }
+
+    return directoryHandle.requestPermission({ mode: "read" });
+  }
+
+  function showRememberedFolderStatus() {
+    const folderName = state.currentFolderName
+      ? `Remembered folder: ${state.currentFolderName}.`
+      : "Folder remembered.";
+    setTrackCount(`${folderName} Click Pick Music Folder to reconnect.`);
   }
 
   async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
@@ -69,6 +167,8 @@ export function createTracksController({
     renderTracks(state.tracks, track.name);
 
     await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
+    await rememberLastTrackName(track.name);
+    syncWaveformPlaybackPosition();
 
     refreshSelectionUi();
     renderSectionList();
@@ -139,11 +239,17 @@ export function createTracksController({
     setSpeedDisplay(value);
   }
 
+  function syncWaveformPlaybackPosition() {
+    waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
+  }
+
   return {
+    restoreRememberedFolder,
     pickMusicFolder,
     selectTrackByIndex,
     clearCurrentTrack,
     releaseCurrentTrackUrl,
     setSpeed,
+    syncWaveformPlaybackPosition,
   };
 }

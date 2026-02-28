@@ -1,3 +1,10 @@
+/**
+ * @role composition-root
+ * @owns app bootstrap, controller composition, DOM event wiring, global error handling
+ * @not-owns business logic for profiles, tracks, sections, selection, or persistence
+ * @notes Keep this file thin; push feature logic into dedicated modules.
+ */
+
 import { openDatabase } from "./db.js";
 import { elements, renderTracks, setTrackCount } from "./ui.js";
 import { createProfilesController } from "./profiles-controller.js";
@@ -39,6 +46,7 @@ sectionsController = createSectionsController({
   selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
   handleError,
 });
 
@@ -59,6 +67,7 @@ async function bootstrap() {
   tracksController.setSpeed(Number(elements.speed.value));
 
   await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
   selectionController.refreshSelectionUi();
 }
 
@@ -102,7 +111,24 @@ function bindEvents() {
   });
 
   audio.addEventListener("timeupdate", () => {
+    tracksController.syncWaveformPlaybackPosition();
     void sectionsController.handleAudioBoundary();
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("seeked", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("pause", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("ended", () => {
+    tracksController.syncWaveformPlaybackPosition();
   });
 
   window.addEventListener("unload", () => {

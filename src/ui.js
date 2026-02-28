@@ -1,3 +1,10 @@
+/**
+ * @role renderer
+ * @owns DOM element lookup and rendering of profiles, tracks, section lists, and simple status displays
+ * @not-owns application state transitions, persistence, or playback rules
+ * @notes Keep this file presentation-only.
+ */
+
 import { createSectionLabel, formatTime } from "./utils.js";
 
 export const elements = {

@@ -1,3 +1,10 @@
+/**
+ * @role controller
+ * @owns A/B selection state, waveform selection sync, mastery display refresh, selection display refresh
+ * @not-owns saved-section persistence, track loading, or profile management
+ * @notes Keep this controller focused on selection semantics and related UI.
+ */
+
 import { state } from "./state.js";
 import { setMasteryDisplay, setSelectionDisplay } from "./ui.js";
 
