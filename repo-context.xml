@@ -51,7 +51,12 @@ src/
   app.js
   constants.js
   db.js
+  music-folder-store.js
+  profiles-controller.js
+  sections-controller.js
+  selection-controller.js
   state.js
+  tracks-controller.js
   ui.js
   utils.js
   waveform.js
@@ -65,203 +70,635 @@ styles.css
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/app.js">
+<file path="src/music-folder-store.js">
+/**
+ * @role persistence-helper
+ * @owns persistence and retrieval of remembered folder handle, folder name, and last track name
+ * @not-owns folder picking, permission prompts, track enumeration, or UI updates
+ * @notes Keep this module storage-focused; controllers should decide behavior.
+ */
+
+import { SETTINGS_KEYS } from "./constants.js";
+import { getSetting, setSetting } from "./db.js";
+
+export async function getRememberedMusicFolder() {
+  const [handle, name, lastTrackName] = await Promise.all([
+    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE),
+    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME),
+    getSetting(SETTINGS_KEYS.LAST_TRACK_NAME),
+  ]);
+
+  return {
+    handle: handle ?? null,
+    name: name ?? null,
+    lastTrackName: lastTrackName ?? null,
+  };
+}
+
+export async function rememberMusicFolder(directoryHandle) {
+  await Promise.all([
+    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE, directoryHandle),
+    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME, directoryHandle?.name ?? null),
+  ]);
+}
+
+export async function rememberLastTrackName(trackName) {
+  await setSetting(SETTINGS_KEYS.LAST_TRACK_NAME, trackName ?? null);
+}
+</file>
+
+<file path="repomix.config.json">
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repo-context.xml",
+    "style": "xml",
+    "instructionFilePath": "repomix-instruction.md",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "includeEmptyDirectories": false,
+    "git": {
+      "sortByChanges": true,
+      "includeDiffs": false,
+      "includeLogs": false
+    }
+  },
+  "include": ["**/*"],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "dist",
+      "repo-context.xml"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
+</file>
+
+<file path="src/profiles-controller.js">
+/**
+ * @role controller
+ * @owns default-profile bootstrap, profile creation, profile refresh, profile selection state transitions
+ * @not-owns section logic, track logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section refreshes after profile changes.
+ */
+
 import { DEFAULT_PROFILE_NAME } from "./constants.js";
-import {
-  addPlayLog,
-  addProfile,
-  addSection,
-  deleteSection,
-  getAllProfiles,
-  getSectionsByProfile,
-  openDatabase,
-  updateSection,
-} from "./db.js";
+import { addProfile, getAllProfiles } from "./db.js";
 import { state } from "./state.js";
-import {
-  elements,
-  renderProfiles,
-  renderSections,
-  renderTracks,
-  setMasteryDisplay,
-  setSelectionDisplay,
-  setSpeedDisplay,
-  setTrackCount,
-} from "./ui.js";
-import {
-  calculateMastery,
-  chooseAdaptiveSection,
-  compareByName,
-  createSectionLabel,
-  isSupportedAudioFile,
-  normalizeSectionRecord,
-  sortSections,
-  summarizeTrackCount,
-} from "./utils.js";
-import { createWaveform } from "./waveform.js";
+import { renderProfiles } from "./ui.js";
 
-const audio = elements.audio;
+export function createProfilesController({ refreshSections, handleError }) {
+  async function ensureDefaultProfile() {
+    const profiles = await getAllProfiles();
 
-const waveform = createWaveform({
-  mountEl: elements.waveformMount,
-  onSelectionChange: handleWaveformSelectionChange,
-});
-
-bindEvents();
-bootstrap().catch(handleError);
-
-async function bootstrap() {
-  await openDatabase();
-  await ensureDefaultProfile();
-
-  renderTracks([], null);
-  setTrackCount("No folder selected.");
-  setSpeed(Number(elements.speed.value));
-
-  await refreshProfiles();
-  refreshSelectionUi();
-}
-
-function bindEvents() {
-  elements.profileSelect.addEventListener("change", async (event) => {
-    state.currentProfileId = Number(event.target.value);
-    state.focusedSectionId = null;
-    state.currentPlayingSectionId = null;
-    await refreshSections();
-  });
-
-  elements.newProfile.addEventListener("click", () => {
-    void createProfile();
-  });
-
-  elements.pickFolder.addEventListener("click", () => {
-    void pickMusicFolder();
-  });
-
-  elements.trackSelect.addEventListener("change", (event) => {
-    const nextIndex = Number(event.target.value);
-    void selectTrackByIndex(nextIndex);
-  });
-
-  elements.markA.addEventListener("click", () => {
-    setSelectionMarker("start");
-  });
-
-  elements.markB.addEventListener("click", () => {
-    setSelectionMarker("end");
-  });
-
-  elements.saveSection.addEventListener("click", () => {
-    void saveSelectionAsSection();
-  });
-
-  elements.adaptivePlay.addEventListener("click", () => {
-    void playAdaptiveSection();
-  });
-
-  elements.speed.addEventListener("input", (event) => {
-    setSpeed(Number(event.target.value));
-  });
-
-  audio.addEventListener("timeupdate", () => {
-    void handleAudioBoundary();
-  });
-
-  window.addEventListener("unload", releaseCurrentTrackUrl);
-}
-
-async function ensureDefaultProfile() {
-  const profiles = await getAllProfiles();
-
-  if (!profiles.length) {
-    await addProfile({ name: DEFAULT_PROFILE_NAME });
-  }
-}
-
-async function refreshProfiles() {
-  const profiles = await getAllProfiles();
-  state.profiles = profiles;
-
-  if (!profiles.length) {
-    state.currentProfileId = null;
-    renderProfiles([], null);
-    await refreshSections();
-    return;
+    if (!profiles.length) {
+      await addProfile({ name: DEFAULT_PROFILE_NAME });
+    }
   }
 
-  if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
-    state.currentProfileId = profiles[0].id;
-  }
+  async function refreshProfiles() {
+    const profiles = await getAllProfiles();
+    state.profiles = profiles;
 
-  renderProfiles(profiles, state.currentProfileId);
-  await refreshSections();
-}
-
-async function refreshSections() {
-  if (!state.currentProfileId) {
-    state.sections = [];
-    renderSectionList();
-    refreshMasteryUi();
-    return;
-  }
-
-  const sections = await getSectionsByProfile(state.currentProfileId);
-  state.sections = sections.map(normalizeSectionRecord).sort(sortSections);
-
-  if (!state.sections.some((section) => section.id === state.focusedSectionId)) {
-    state.focusedSectionId = null;
-  }
-
-  if (!state.sections.some((section) => section.id === state.currentPlayingSectionId)) {
-    state.currentPlayingSectionId = null;
-  }
-
-  renderSectionList();
-  refreshMasteryUi();
-}
-
-function renderSectionList() {
-  renderSections({
-    sections: state.sections,
-    activeSectionId: state.currentPlayingSectionId ?? state.focusedSectionId,
-    currentTrackName: state.currentTrack?.name ?? null,
-    onFocus: (sectionId) => {
-      void focusSection(sectionId);
-    },
-    onPlay: (sectionId) => {
-      void playSectionById(sectionId);
-    },
-    onDelete: (sectionId) => {
-      void removeSection(sectionId);
-    },
-  });
-}
-
-async function createProfile() {
-  try {
-    const name = window.prompt("Profile name?");
-    const trimmed = name?.trim();
-
-    if (!trimmed) {
+    if (!profiles.length) {
+      state.currentProfileId = null;
+      renderProfiles([], null);
+      await refreshSections();
       return;
     }
 
-    const profileId = await addProfile({ name: trimmed });
-    state.currentProfileId = profileId;
-    await refreshProfiles();
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function pickMusicFolder() {
-  try {
-    if (!window.showDirectoryPicker) {
-      throw new Error("This browser does not support folder selection.");
+    if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
+      state.currentProfileId = profiles[0].id;
     }
 
-    const previousTrackName = state.currentTrack?.name ?? null;
-    const directoryHandle = await window.showDirectoryPicker();
+    renderProfiles(profiles, state.currentProfileId);
+    await refreshSections();
+  }
+
+  async function createProfile() {
+    try {
+      const name = window.prompt("Profile name?");
+      const trimmed = name?.trim();
+
+      if (!trimmed) {
+        return;
+      }
+
+      const profileId = await addProfile({ name: trimmed });
+      state.currentProfileId = profileId;
+      await refreshProfiles();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  function setCurrentProfileId(profileId) {
+    state.currentProfileId = profileId;
+    state.focusedSectionId = null;
+    state.currentPlayingSectionId = null;
+  }
+
+  return {
+    ensureDefaultProfile,
+    refreshProfiles,
+    createProfile,
+    setCurrentProfileId,
+  };
+}
+</file>
+
+<file path="src/sections-controller.js">
+/**
+ * @role controller
+ * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking
+ * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
+ * @notes This controller coordinates with track loading when a section references another track.
+ */
+
+import {
+  addPlayLog,
+  addSection,
+  deleteSection,
+  getSectionsByProfile,
+  updateSection,
+} from "./db.js";
+import { state } from "./state.js";
+import { elements, renderSections } from "./ui.js";
+import {
+  calculateMastery,
+  chooseAdaptiveSection,
+  createSectionLabel,
+  normalizeSectionRecord,
+  sortSections,
+} from "./utils.js";
+
+export function createSectionsController({
+  audio,
+  selectTrackByIndex,
+  refreshSelectionUi,
+  refreshMasteryUi,
+  syncPlaybackUi,
+  handleError,
+}) {
+  async function refreshSections() {
+    if (!state.currentProfileId) {
+      state.sections = [];
+      renderSectionList();
+      refreshMasteryUi();
+      return;
+    }
+
+    const sections = await getSectionsByProfile(state.currentProfileId);
+    state.sections = sections.map(normalizeSectionRecord).sort(sortSections);
+
+    if (!state.sections.some((section) => section.id === state.focusedSectionId)) {
+      state.focusedSectionId = null;
+    }
+
+    if (!state.sections.some((section) => section.id === state.currentPlayingSectionId)) {
+      state.currentPlayingSectionId = null;
+    }
+
+    renderSectionList();
+    refreshMasteryUi();
+  }
+
+  function renderSectionList() {
+    renderSections({
+      sections: state.sections,
+      activeSectionId: state.currentPlayingSectionId ?? state.focusedSectionId,
+      currentTrackName: state.currentTrack?.name ?? null,
+      onFocus: (sectionId) => {
+        void focusSection(sectionId);
+      },
+      onPlay: (sectionId) => {
+        void playSectionById(sectionId);
+      },
+      onDelete: (sectionId) => {
+        void removeSection(sectionId);
+      },
+    });
+  }
+
+  async function saveSelectionAsSection() {
+    try {
+      if (!state.currentProfileId) {
+        window.alert("Select a profile first.");
+        return;
+      }
+
+      if (!state.currentTrack) {
+        window.alert("Pick a track first.");
+        return;
+      }
+
+      if (state.selection.start == null || state.selection.end == null) {
+        window.alert("Mark both A and B before saving a section.");
+        return;
+      }
+
+      const start = Math.min(state.selection.start, state.selection.end);
+      const end = Math.max(state.selection.start, state.selection.end);
+
+      if (Math.abs(end - start) < 0.05) {
+        window.alert("The selected section is too short.");
+        return;
+      }
+
+      const sectionId = await addSection({
+        profileId: state.currentProfileId,
+        trackName: state.currentTrack.name,
+        start,
+        end,
+        playCount: 0,
+        mastery: 0,
+        lastPlayed: 0,
+        createdAt: Date.now(),
+      });
+
+      state.focusedSectionId = sectionId;
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function focusSection(sectionId) {
+    try {
+      const section = state.sections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
+        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
+      }
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function ensureTrackLoadedForSection(section) {
+    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+    if (trackIndex === -1) {
+      window.alert(
+        `Track "${section.trackName}" is not available in the currently selected folder.`,
+      );
+      return false;
+    }
+
+    if (state.currentTrack?.name !== section.trackName) {
+      await selectTrackByIndex(trackIndex, { preserveSelection: true });
+    }
+
+    return true;
+  }
+
+  async function playSectionById(sectionId) {
+    try {
+      const section = state.sections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return;
+      }
+
+      state.currentPlayingSectionId = section.id;
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+
+      audio.currentTime = section.start;
+      syncPlaybackUi();
+      await audio.play();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function playAdaptiveSection() {
+    try {
+      if (!state.sections.length) {
+        window.alert("There are no saved sections for this profile yet.");
+        return;
+      }
+
+      const nextSection = chooseAdaptiveSection(state.sections);
+
+      if (!nextSection) {
+        return;
+      }
+
+      await playSectionById(nextSection.id);
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function handleAudioBoundary() {
+    if (!state.currentPlayingSectionId) {
+      return;
+    }
+
+    const activeSection = state.sections.find(
+      (section) => section.id === state.currentPlayingSectionId,
+    );
+
+    if (!activeSection) {
+      return;
+    }
+
+    if (audio.currentTime < activeSection.end) {
+      return;
+    }
+
+    if (elements.loopToggle.checked) {
+      audio.currentTime = activeSection.start;
+      syncPlaybackUi();
+      return;
+    }
+
+    audio.pause();
+    audio.currentTime = activeSection.end;
+    syncPlaybackUi();
+
+    const completedSectionId = state.currentPlayingSectionId;
+    state.currentPlayingSectionId = null;
+    renderSectionList();
+
+    await finalizeSectionPlay(completedSectionId);
+  }
+
+  async function finalizeSectionPlay(sectionId) {
+    const section = state.sections.find((item) => item.id === sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    const now = Date.now();
+    const updatedSection = {
+      ...section,
+      playCount: section.playCount + 1,
+      lastPlayed: now,
+      mastery: calculateMastery(section, now),
+    };
+
+    await updateSection(updatedSection);
+    await addPlayLog({
+      sectionId,
+      timestamp: now,
+      speed: audio.playbackRate,
+    });
+
+    state.focusedSectionId = sectionId;
+    await refreshSections();
+  }
+
+  async function removeSection(sectionId) {
+    try {
+      const section = state.sections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
+
+      if (!confirmed) {
+        return;
+      }
+
+      if (state.currentPlayingSectionId === sectionId) {
+        audio.pause();
+        state.currentPlayingSectionId = null;
+      }
+
+      if (state.focusedSectionId === sectionId) {
+        state.focusedSectionId = null;
+      }
+
+      await deleteSection(sectionId);
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  return {
+    refreshSections,
+    renderSectionList,
+    saveSelectionAsSection,
+    focusSection,
+    playSectionById,
+    playAdaptiveSection,
+    handleAudioBoundary,
+    removeSection,
+  };
+}
+</file>
+
+<file path="src/selection-controller.js">
+/**
+ * @role controller
+ * @owns A/B selection state, waveform selection sync, mastery display refresh, selection display refresh
+ * @not-owns saved-section persistence, track loading, or profile management
+ * @notes Keep this controller focused on selection semantics and related UI.
+ */
+
+import { state } from "./state.js";
+import { setMasteryDisplay, setSelectionDisplay } from "./ui.js";
+
+export function createSelectionController({ audio, waveform, renderSectionList }) {
+  function refreshSelectionUi() {
+    waveform.setSelection(state.selection);
+    setSelectionDisplay(state.selection.start, state.selection.end);
+  }
+
+  function refreshMasteryUi() {
+    const focusedSection =
+      state.sections.find((section) => section.id === state.currentPlayingSectionId) ||
+      state.sections.find((section) => section.id === state.focusedSectionId) ||
+      null;
+
+    setMasteryDisplay(focusedSection?.mastery ?? null);
+  }
+
+  function clearFocusedSectionForManualSelection() {
+    if (state.currentPlayingSectionId || state.focusedSectionId == null) {
+      return;
+    }
+
+    state.focusedSectionId = null;
+    renderSectionList();
+    refreshMasteryUi();
+  }
+
+  function handleWaveformSelectionChange(selection) {
+    state.selection = selection;
+    setSelectionDisplay(selection.start, selection.end);
+    clearFocusedSectionForManualSelection();
+  }
+
+  function setSelectionMarker(key) {
+    if (!state.currentTrack) {
+      window.alert("Pick a track first.");
+      return;
+    }
+
+    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    state.selection = {
+      ...state.selection,
+      [key]: currentTime,
+    };
+
+    refreshSelectionUi();
+    clearFocusedSectionForManualSelection();
+  }
+
+  return {
+    refreshSelectionUi,
+    refreshMasteryUi,
+    handleWaveformSelectionChange,
+    setSelectionMarker,
+  };
+}
+</file>
+
+<file path="src/tracks-controller.js">
+/**
+ * @role controller
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, waveform playback sync
+ * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
+ * @notes Keep folder persistence delegated to music-folder-store.js.
+ */
+
+import { state } from "./state.js";
+import { elements, renderTracks, setSpeedDisplay, setTrackCount } from "./ui.js";
+import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "./utils.js";
+import {
+  getRememberedMusicFolder,
+  rememberLastTrackName,
+  rememberMusicFolder,
+} from "./music-folder-store.js";
+
+export function createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi,
+  renderSectionList,
+  refreshMasteryUi,
+  handleError,
+}) {
+  async function restoreRememberedFolder() {
+    try {
+      const remembered = await getRememberedMusicFolder();
+
+      if (!remembered.handle) {
+        return;
+      }
+
+      state.currentFolderHandle = remembered.handle;
+      state.currentFolderName = remembered.name || remembered.handle.name || null;
+
+      const permissionState = await queryDirectoryPermission(remembered.handle);
+
+      if (permissionState === "granted") {
+        await loadTracksFromDirectory(remembered.handle, {
+          preferredTrackName: remembered.lastTrackName,
+        });
+        return;
+      }
+
+      showRememberedFolderStatus();
+    } catch (error) {
+      console.warn("Unable to restore remembered music folder.", error);
+      setTrackCount("No folder selected.");
+    }
+  }
+
+  async function pickMusicFolder() {
+    try {
+      if (!window.showDirectoryPicker) {
+        throw new Error("This browser does not support folder selection.");
+      }
+
+      const remembered = await getRememberedMusicFolder();
+
+      if (state.currentFolderHandle && !state.tracks.length) {
+        const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
+
+        if (permissionState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
+        }
+
+        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+
+        if (requestedState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
+        }
+      }
+
+      const previousTrackName = state.currentTrack?.name ?? remembered.lastTrackName ?? null;
+      const directoryHandle = await window.showDirectoryPicker();
+
+      await rememberSelectedMusicFolder(directoryHandle);
+      await loadTracksFromDirectory(directoryHandle, {
+        preferredTrackName: previousTrackName,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function rememberSelectedMusicFolder(directoryHandle) {
+    state.currentFolderHandle = directoryHandle;
+    state.currentFolderName = directoryHandle.name ?? null;
+    await rememberMusicFolder(directoryHandle);
+  }
+
+  async function loadTracksFromDirectory(directoryHandle, { preferredTrackName = null } = {}) {
     const nextTracks = [];
 
     for await (const [name, handle] of directoryHandle.entries()) {
@@ -284,555 +721,151 @@ async function pickMusicFolder() {
       return;
     }
 
-    const nextIndex = previousTrackName
-      ? nextTracks.findIndex((track) => track.name === previousTrackName)
+    const nextIndex = preferredTrackName
+      ? nextTracks.findIndex((track) => track.name === preferredTrackName)
       : 0;
 
     await selectTrackByIndex(nextIndex >= 0 ? nextIndex : 0);
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
-  const track = state.tracks[index];
-
-  if (!track) {
-    return;
   }
 
-  audio.pause();
-  state.currentPlayingSectionId = null;
-  state.currentTrack = track;
+  async function queryDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.queryPermission) {
+      return "prompt";
+    }
 
-  if (!preserveSelection) {
-    state.selection = { start: null, end: null };
-    state.focusedSectionId = null;
+    return directoryHandle.queryPermission({ mode: "read" });
   }
 
-  renderTracks(state.tracks, track.name);
+  async function requestDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.requestPermission) {
+      return "granted";
+    }
 
-  await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
-
-  refreshSelectionUi();
-  renderSectionList();
-  refreshMasteryUi();
-}
-
-function clearCurrentTrack() {
-  audio.pause();
-  state.currentPlayingSectionId = null;
-  state.currentTrack = null;
-  state.selection = { start: null, end: null };
-  state.focusedSectionId = null;
-
-  releaseCurrentTrackUrl();
-  audio.removeAttribute("src");
-  audio.load();
-
-  waveform.clear();
-  renderTracks(state.tracks, null);
-  refreshSelectionUi();
-  renderSectionList();
-  refreshMasteryUi();
-}
-
-async function loadAudioFile(file) {
-  releaseCurrentTrackUrl();
-
-  const objectUrl = URL.createObjectURL(file);
-  state.currentTrackUrl = objectUrl;
-
-  await new Promise((resolve, reject) => {
-    const onLoadedMetadata = () => {
-      cleanup();
-      resolve();
-    };
-
-    const onError = () => {
-      cleanup();
-      reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
-    };
-
-    const cleanup = () => {
-      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("error", onError);
-    };
-
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("error", onError);
-
-    audio.src = objectUrl;
-    audio.load();
-  });
-
-  audio.playbackRate = Number(elements.speed.value);
-}
-
-function releaseCurrentTrackUrl() {
-  if (!state.currentTrackUrl) {
-    return;
+    return directoryHandle.requestPermission({ mode: "read" });
   }
 
-  URL.revokeObjectURL(state.currentTrackUrl);
-  state.currentTrackUrl = null;
-}
-
-function setSpeed(value) {
-  audio.playbackRate = value;
-  setSpeedDisplay(value);
-}
-
-function refreshSelectionUi() {
-  waveform.setSelection(state.selection);
-  setSelectionDisplay(state.selection.start, state.selection.end);
-}
-
-function refreshMasteryUi() {
-  const focusedSection =
-    state.sections.find((section) => section.id === state.currentPlayingSectionId) ||
-    state.sections.find((section) => section.id === state.focusedSectionId) ||
-    null;
-
-  setMasteryDisplay(focusedSection?.mastery ?? null);
-}
-
-function clearFocusedSectionForManualSelection() {
-  if (state.currentPlayingSectionId || state.focusedSectionId == null) {
-    return;
+  function showRememberedFolderStatus() {
+    const folderName = state.currentFolderName
+      ? `Remembered folder: ${state.currentFolderName}.`
+      : "Folder remembered.";
+    setTrackCount(`${folderName} Click Pick Music Folder to reconnect.`);
   }
 
-  state.focusedSectionId = null;
-  renderSectionList();
-  refreshMasteryUi();
-}
+  async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
+    const track = state.tracks[index];
 
-function handleWaveformSelectionChange(selection) {
-  state.selection = selection;
-  setSelectionDisplay(selection.start, selection.end);
-  clearFocusedSectionForManualSelection();
-}
-
-function setSelectionMarker(key) {
-  if (!state.currentTrack) {
-    window.alert("Pick a track first.");
-    return;
-  }
-
-  const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-  state.selection = {
-    ...state.selection,
-    [key]: currentTime,
-  };
-
-  refreshSelectionUi();
-  clearFocusedSectionForManualSelection();
-}
-
-async function saveSelectionAsSection() {
-  try {
-    if (!state.currentProfileId) {
-      window.alert("Select a profile first.");
+    if (!track) {
       return;
     }
 
-    if (!state.currentTrack) {
-      window.alert("Pick a track first.");
-      return;
-    }
+    audio.pause();
+    state.currentPlayingSectionId = null;
+    state.currentTrack = track;
 
-    if (state.selection.start == null || state.selection.end == null) {
-      window.alert("Mark both A and B before saving a section.");
-      return;
-    }
-
-    const start = Math.min(state.selection.start, state.selection.end);
-    const end = Math.max(state.selection.start, state.selection.end);
-
-    if (Math.abs(end - start) < 0.05) {
-      window.alert("The selected section is too short.");
-      return;
-    }
-
-    const sectionId = await addSection({
-      profileId: state.currentProfileId,
-      trackName: state.currentTrack.name,
-      start,
-      end,
-      playCount: 0,
-      mastery: 0,
-      lastPlayed: 0,
-      createdAt: Date.now(),
-    });
-
-    state.focusedSectionId = sectionId;
-    await refreshSections();
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function focusSection(sectionId) {
-  try {
-    const section = state.sections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    state.focusedSectionId = section.id;
-    state.selection = {
-      start: section.start,
-      end: section.end,
-    };
-
-    const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-    if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
-      await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
-    }
-
-    refreshSelectionUi();
-    renderSectionList();
-    refreshMasteryUi();
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function ensureTrackLoadedForSection(section) {
-  const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-  if (trackIndex === -1) {
-    window.alert(
-      `Track "${section.trackName}" is not available in the currently selected folder.`,
-    );
-    return false;
-  }
-
-  if (state.currentTrack?.name !== section.trackName) {
-    await selectTrackByIndex(trackIndex, { preserveSelection: true });
-  }
-
-  return true;
-}
-
-async function playSectionById(sectionId) {
-  try {
-    const section = state.sections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    const ready = await ensureTrackLoadedForSection(section);
-
-    if (!ready) {
-      return;
-    }
-
-    state.currentPlayingSectionId = section.id;
-    state.focusedSectionId = section.id;
-    state.selection = {
-      start: section.start,
-      end: section.end,
-    };
-
-    refreshSelectionUi();
-    renderSectionList();
-    refreshMasteryUi();
-
-    audio.currentTime = section.start;
-    await audio.play();
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function playAdaptiveSection() {
-  try {
-    if (!state.sections.length) {
-      window.alert("There are no saved sections for this profile yet.");
-      return;
-    }
-
-    const nextSection = chooseAdaptiveSection(state.sections);
-
-    if (!nextSection) {
-      return;
-    }
-
-    await playSectionById(nextSection.id);
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-async function handleAudioBoundary() {
-  if (!state.currentPlayingSectionId) {
-    return;
-  }
-
-  const activeSection = state.sections.find(
-    (section) => section.id === state.currentPlayingSectionId,
-  );
-
-  if (!activeSection) {
-    return;
-  }
-
-  if (audio.currentTime < activeSection.end) {
-    return;
-  }
-
-  if (elements.loopToggle.checked) {
-    audio.currentTime = activeSection.start;
-    return;
-  }
-
-  audio.pause();
-  audio.currentTime = activeSection.end;
-
-  const completedSectionId = state.currentPlayingSectionId;
-  state.currentPlayingSectionId = null;
-  renderSectionList();
-
-  await finalizeSectionPlay(completedSectionId);
-}
-
-async function finalizeSectionPlay(sectionId) {
-  const section = state.sections.find((item) => item.id === sectionId);
-
-  if (!section) {
-    return;
-  }
-
-  const now = Date.now();
-  const updatedSection = {
-    ...section,
-    playCount: section.playCount + 1,
-    lastPlayed: now,
-    mastery: calculateMastery(section, now),
-  };
-
-  await updateSection(updatedSection);
-  await addPlayLog({
-    sectionId,
-    timestamp: now,
-    speed: audio.playbackRate,
-  });
-
-  state.focusedSectionId = sectionId;
-  await refreshSections();
-}
-
-async function removeSection(sectionId) {
-  try {
-    const section = state.sections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    if (state.currentPlayingSectionId === sectionId) {
-      audio.pause();
-      state.currentPlayingSectionId = null;
-    }
-
-    if (state.focusedSectionId === sectionId) {
+    if (!preserveSelection) {
+      state.selection = { start: null, end: null };
       state.focusedSectionId = null;
     }
 
-    await deleteSection(sectionId);
-    await refreshSections();
-  } catch (error) {
-    handleError(error);
-  }
-}
+    renderTracks(state.tracks, track.name);
 
-function handleError(error) {
-  if (!error || error.name === "AbortError") {
-    return;
-  }
+    await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
+    await rememberLastTrackName(track.name);
+    syncWaveformPlaybackPosition();
 
-  console.error(error);
-  window.alert(error.message || "Something went wrong.");
-}
-</file>
-
-<file path="src/constants.js">
-export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 2;
-
-export const STORES = {
-  PROFILES: "profiles",
-  SECTIONS: "sections",
-  PLAYS: "plays",
-};
-
-export const DEFAULT_PROFILE_NAME = "Default";
-
-export const SUPPORTED_AUDIO_EXTENSIONS = [
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".flac",
-];
-</file>
-
-<file path="src/db.js">
-import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
-
-let dbPromise = null;
-
-export function openDatabase() {
-  if (dbPromise) {
-    return dbPromise;
+    refreshSelectionUi();
+    renderSectionList();
+    refreshMasteryUi();
   }
 
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+  function clearCurrentTrack() {
+    audio.pause();
+    state.currentPlayingSectionId = null;
+    state.currentTrack = null;
+    state.selection = { start: null, end: null };
+    state.focusedSectionId = null;
 
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result;
-      const transaction = event.target.transaction;
+    releaseCurrentTrackUrl();
+    audio.removeAttribute("src");
+    audio.load();
 
-      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
-        ? transaction.objectStore(STORES.PROFILES)
-        : database.createObjectStore(STORES.PROFILES, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
+    waveform.clear();
+    renderTracks(state.tracks, null);
+    refreshSelectionUi();
+    renderSectionList();
+    refreshMasteryUi();
+  }
 
-      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
-        ? transaction.objectStore(STORES.SECTIONS)
-        : database.createObjectStore(STORES.SECTIONS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
+  async function loadAudioFile(file) {
+    releaseCurrentTrackUrl();
 
-      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
-        ? transaction.objectStore(STORES.PLAYS)
-        : database.createObjectStore(STORES.PLAYS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
+    const objectUrl = URL.createObjectURL(file);
+    state.currentTrackUrl = objectUrl;
 
-      if (!profilesStore.indexNames.contains("byName")) {
-        profilesStore.createIndex("byName", "name", { unique: false });
-      }
+    await new Promise((resolve, reject) => {
+      const onLoadedMetadata = () => {
+        cleanup();
+        resolve();
+      };
 
-      if (!sectionsStore.indexNames.contains("byProfileId")) {
-        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
-      }
+      const onError = () => {
+        cleanup();
+        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
+      };
 
-      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
-        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
-          unique: false,
-        });
-      }
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+        audio.removeEventListener("error", onError);
+      };
 
-      if (!playsStore.indexNames.contains("bySectionId")) {
-        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
-      }
-    };
+      audio.addEventListener("loadedmetadata", onLoadedMetadata);
+      audio.addEventListener("error", onError);
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+      audio.src = objectUrl;
+      audio.load();
+    });
 
-  return dbPromise;
+    audio.playbackRate = Number(elements.speed.value);
+  }
+
+  function releaseCurrentTrackUrl() {
+    if (!state.currentTrackUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(state.currentTrackUrl);
+    state.currentTrackUrl = null;
+  }
+
+  function setSpeed(value) {
+    audio.playbackRate = value;
+    setSpeedDisplay(value);
+  }
+
+  function syncWaveformPlaybackPosition() {
+    waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
+  }
+
+  return {
+    restoreRememberedFolder,
+    pickMusicFolder,
+    selectTrackByIndex,
+    clearCurrentTrack,
+    releaseCurrentTrackUrl,
+    setSpeed,
+    syncWaveformPlaybackPosition,
+  };
 }
-
-function runRequest(storeName, mode, action) {
-  return openDatabase().then(
-    (database) =>
-      new Promise((resolve, reject) => {
-        const transaction = database.transaction(storeName, mode);
-        const store = transaction.objectStore(storeName);
-        let request;
-        let result;
-
-        try {
-          request = action(store);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-
-        if (request) {
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          request.onerror = () => reject(request.error);
-        }
-
-        transaction.oncomplete = () => resolve(result);
-        transaction.onerror = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
-        transaction.onabort = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
-      }),
-  );
-}
-
-export function getAllProfiles() {
-  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
-}
-
-export function addProfile(profile) {
-  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
-}
-
-export function getSectionsByProfile(profileId) {
-  return runRequest(STORES.SECTIONS, "readonly", (store) =>
-    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
-  );
-}
-
-export function addSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
-}
-
-export function updateSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
-}
-
-export function deleteSection(sectionId) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
-}
-
-export function addPlayLog(play) {
-  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
-}
-</file>
-
-<file path="src/state.js">
-export const state = {
-  profiles: [],
-  currentProfileId: null,
-  tracks: [],
-  currentTrack: null,
-  currentTrackUrl: null,
-  sections: [],
-  selection: {
-    start: null,
-    end: null,
-  },
-  focusedSectionId: null,
-  currentPlayingSectionId: null,
-};
 </file>
 
 <file path="src/ui.js">
+/**
+ * @role renderer
+ * @owns DOM element lookup and rendering of profiles, tracks, section lists, and simple status displays
+ * @not-owns application state transitions, persistence, or playback rules
+ * @notes Keep this file presentation-only.
+ */
+
 import { createSectionLabel, formatTime } from "./utils.js";
 
 export const elements = {
@@ -1001,6 +1034,13 @@ export function renderSections({
 </file>
 
 <file path="src/utils.js">
+/**
+ * @role utility-module
+ * @owns pure helpers for formatting, sorting, normalization, clamping, and adaptive-choice logic
+ * @not-owns DOM updates, persistence, or mutable application state
+ * @notes Prefer adding only side-effect-free helpers here.
+ */
+
 import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -1091,297 +1131,24 @@ export function chooseAdaptiveSection(sections) {
 }
 </file>
 
-<file path="src/waveform.js">
-import { clamp } from "./utils.js";
-
-const COLORS = {
-  background: "#f8fafc",
-  waveform: "#cbd5e1",
-  selectionFill: "rgba(59, 130, 246, 0.20)",
-  selectionLine: "#2563eb",
-  text: "#6b7280",
-};
-
-export function createWaveform({ mountEl, onSelectionChange }) {
-  const canvas = document.createElement("canvas");
-  canvas.className = "waveform-canvas";
-  canvas.height = 140;
-  canvas.style.touchAction = "none";
-  mountEl.appendChild(canvas);
-
-  const ctx = canvas.getContext("2d");
-
-  let audioBuffer = null;
-  let selection = { start: null, end: null };
-  let dragging = false;
-
-  function resize() {
-    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
-    canvas.height = 140;
-    draw();
-  }
-
-  window.addEventListener("resize", resize);
-
-  canvas.addEventListener("pointerdown", handlePointerDown);
-  canvas.addEventListener("pointermove", handlePointerMove);
-  canvas.addEventListener("pointerup", handlePointerUp);
-  canvas.addEventListener("pointerleave", handlePointerUp);
-
-  resize();
-
-  function getDuration() {
-    return audioBuffer?.duration ?? 0;
-  }
-
-  function getNormalizedSelection() {
-    const duration = getDuration();
-    return {
-      start: Number.isFinite(selection.start) ? clamp(selection.start, 0, duration) : null,
-      end: Number.isFinite(selection.end) ? clamp(selection.end, 0, duration) : null,
-    };
-  }
-
-  function drawPlaceholder(message) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.text;
-    ctx.font = "14px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
-  }
-
-  function xToTime(x) {
-    const duration = getDuration();
-    if (!duration) {
-      return 0;
-    }
-
-    return (clamp(x, 0, canvas.width) / canvas.width) * duration;
-  }
-
-  function timeToX(time) {
-    const duration = getDuration();
-    if (!duration) {
-      return 0;
-    }
-
-    return (clamp(time, 0, duration) / duration) * canvas.width;
-  }
-
-  function draw() {
-    if (!audioBuffer) {
-      drawPlaceholder("Pick a track to see the waveform.");
-      return;
-    }
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const channelData = audioBuffer.getChannelData(0);
-    const step = Math.max(1, Math.ceil(channelData.length / canvas.width));
-    const amplitude = canvas.height / 2;
-
-    ctx.fillStyle = COLORS.waveform;
-
-    for (let x = 0; x < canvas.width; x += 1) {
-      let min = 1;
-      let max = -1;
-      const offset = x * step;
-
-      for (let i = 0; i < step; i += 1) {
-        const sample = channelData[offset + i];
-        if (sample === undefined) {
-          break;
-        }
-        if (sample < min) {
-          min = sample;
-        }
-        if (sample > max) {
-          max = sample;
-        }
-      }
-
-      ctx.fillRect(x, (1 + min) * amplitude, 1, Math.max(1, (max - min) * amplitude));
-    }
-
-    drawSelection();
-  }
-
-  function drawMarker(time, label) {
-    const x = timeToX(time);
-
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = COLORS.selectionLine;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.fillStyle = COLORS.selectionLine;
-    ctx.font = "12px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, Math.min(canvas.width - 20, x + 4), 6);
-  }
-
-  function drawSelection() {
-    const current = getNormalizedSelection();
-
-    if (current.start == null && current.end == null) {
-      return;
-    }
-
-    if (current.start != null && current.end != null) {
-      const startX = timeToX(current.start);
-      const endX = timeToX(current.end);
-
-      ctx.fillStyle = COLORS.selectionFill;
-      ctx.fillRect(Math.min(startX, endX), 0, Math.abs(endX - startX), canvas.height);
-    }
-
-    if (current.start != null) {
-      drawMarker(current.start, "A");
-    }
-
-    if (current.end != null) {
-      drawMarker(current.end, "B");
-    }
-  }
-
-  function setSelection(nextSelection, { notify = false } = {}) {
-    selection = {
-      start: Number.isFinite(nextSelection?.start) ? nextSelection.start : null,
-      end: Number.isFinite(nextSelection?.end) ? nextSelection.end : null,
-    };
-
-    draw();
-
-    if (notify) {
-      onSelectionChange?.({ ...getNormalizedSelection() });
-    }
-  }
-
-  async function loadFile(file) {
-    drawPlaceholder("Loading waveform…");
-
-    const arrayBuffer = await file.arrayBuffer();
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-
-    if (!AudioContextCtor) {
-      audioBuffer = null;
-      drawPlaceholder("Waveform preview is unavailable in this browser.");
-      return;
-    }
-
-    const audioContext = new AudioContextCtor();
-
-    try {
-      audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-    } finally {
-      if (audioContext.close) {
-        await audioContext.close();
-      }
-    }
-
-    draw();
-  }
-
-  function clear() {
-    audioBuffer = null;
-    selection = { start: null, end: null };
-    draw();
-  }
-
-  function handlePointerDown(event) {
-    if (!audioBuffer) {
-      return;
-    }
-
-    canvas.setPointerCapture(event.pointerId);
-    dragging = true;
-
-    const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
-
-    setSelection({ start: time, end: time }, { notify: true });
-  }
-
-  function handlePointerMove(event) {
-    if (!dragging || !audioBuffer) {
-      return;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
-
-    setSelection({ start: selection.start, end: time }, { notify: true });
-  }
-
-  function handlePointerUp(event) {
-    if (dragging && canvas.hasPointerCapture(event.pointerId)) {
-      canvas.releasePointerCapture(event.pointerId);
-    }
-
-    dragging = false;
-  }
-
-  return {
-    clear,
-    loadFile,
-    setSelection,
-    getSelection: () => ({ ...getNormalizedSelection() }),
-  };
-}
-</file>
-
 <file path=".gitignore">
+# @role ignore-rules
+# @owns repository-local ignore patterns for generated files and machine-specific clutter
+# @not-owns build config, workflow behavior, or architecture guidance
+# @notes Keep this file limited to ignore behavior and concise comments.
+
 dist/
 .DS_Store
 </file>
 
-<file path="repomix.config.json">
-{
-  "$schema": "https://repomix.com/schemas/latest/schema.json",
-  "output": {
-    "filePath": "repo-context.xml",
-    "style": "xml",
-    "instructionFilePath": "repomix-instruction.md",
-    "fileSummary": true,
-    "directoryStructure": true,
-    "files": true,
-    "removeComments": false,
-    "removeEmptyLines": false,
-    "includeEmptyDirectories": false,
-    "git": {
-      "sortByChanges": true,
-      "includeDiffs": false,
-      "includeLogs": false
-    }
-  },
-  "include": ["**/*"],
-  "ignore": {
-    "useGitignore": true,
-    "useDefaultPatterns": true,
-    "customPatterns": [
-      "dist",
-      "repo-context.xml"
-    ]
-  },
-  "security": {
-    "enableSecurityCheck": true
-  },
-  "tokenCount": {
-    "encoding": "o200k_base"
-  }
-}
-</file>
-
 <file path="styles.css">
+/*
+ * @role stylesheet
+ * @owns presentation, layout, spacing, colors, responsive behavior, and component states
+ * @not-owns markup structure or runtime behavior
+ * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
+ */
+
 :root {
   --bg: #f4f6f8;
   --card: #ffffff;
@@ -1641,6 +1408,11 @@ audio {
 </file>
 
 <file path=".github/workflows/update-repo-context.yml">
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes No logic change required for header-driven ownership; this workflow already republishes the instruction file and source files through Repomix.
+
 name: Update Repo Context
 
 on:
@@ -1697,7 +1469,716 @@ jobs:
           git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
+<file path="src/constants.js">
+/**
+ * @role shared-constants
+ * @owns database names, schema versions, store names, settings keys, default constants
+ * @not-owns runtime state, persistence behavior, or UI logic
+ * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
+ */
+
+export const DB_NAME = "suzukiDB_v4";
+export const DB_VERSION = 3;
+
+export const STORES = {
+  PROFILES: "profiles",
+  SECTIONS: "sections",
+  PLAYS: "plays",
+  SETTINGS: "settings",
+};
+
+export const SETTINGS_KEYS = {
+  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
+  MUSIC_FOLDER_NAME: "musicFolderName",
+  LAST_TRACK_NAME: "lastTrackName",
+};
+
+export const DEFAULT_PROFILE_NAME = "Default";
+
+export const SUPPORTED_AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+];
+</file>
+
+<file path="src/db.js">
+/**
+ * @role persistence-layer
+ * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
+ * @not-owns business rules, UI updates, or controller orchestration
+ * @notes Preserve compatibility with existing user data whenever possible.
+ */
+
+import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
+
+let dbPromise = null;
+
+export function openDatabase() {
+  if (dbPromise) {
+    return dbPromise;
+  }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const database = event.target.result;
+      const transaction = event.target.transaction;
+
+      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
+        ? transaction.objectStore(STORES.PROFILES)
+        : database.createObjectStore(STORES.PROFILES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
+        ? transaction.objectStore(STORES.SECTIONS)
+        : database.createObjectStore(STORES.SECTIONS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
+        ? transaction.objectStore(STORES.PLAYS)
+        : database.createObjectStore(STORES.PLAYS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+        database.createObjectStore(STORES.SETTINGS, {
+          keyPath: "key",
+        });
+      }
+
+      if (!profilesStore.indexNames.contains("byName")) {
+        profilesStore.createIndex("byName", "name", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileId")) {
+        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
+        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
+          unique: false,
+        });
+      }
+
+      if (!playsStore.indexNames.contains("bySectionId")) {
+        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  return dbPromise;
+}
+
+function runRequest(storeName, mode, action) {
+  return openDatabase().then(
+    (database) =>
+      new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        let request;
+        let result;
+
+        try {
+          request = action(store);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        if (request) {
+          request.onsuccess = () => {
+            result = request.result;
+          };
+          request.onerror = () => reject(request.error);
+        }
+
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
+        transaction.onabort = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
+      }),
+  );
+}
+
+export function getAllProfiles() {
+  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
+}
+
+export function addProfile(profile) {
+  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
+}
+
+export function getSectionsByProfile(profileId) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  );
+}
+
+export function addSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
+}
+
+export function updateSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
+}
+
+export function deleteSection(sectionId) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
+}
+
+export function addPlayLog(play) {
+  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
+}
+</file>
+
+<file path="src/state.js">
+/**
+ * @role shared-runtime-state
+ * @owns in-memory application state shared across controllers
+ * @not-owns persistence, validation rules, or UI rendering
+ * @notes Keep this as plain data; behavior belongs in controllers or helpers.
+ */
+
+export const state = {
+  profiles: [],
+  currentProfileId: null,
+  currentFolderHandle: null,
+  currentFolderName: null,
+  tracks: [],
+  currentTrack: null,
+  currentTrackUrl: null,
+  sections: [],
+  selection: {
+    start: null,
+    end: null,
+  },
+  focusedSectionId: null,
+  currentPlayingSectionId: null,
+};
+</file>
+
+<file path="src/waveform.js">
+/**
+ * @role renderer
+ * @owns waveform decoding, peak caching, canvas rendering, drag selection, playback-position visualization
+ * @not-owns audio playback control, persistence, or section business rules
+ * @notes Keep redraws efficient; cache derived waveform data when possible.
+ */
+
+import { clamp } from "./utils.js";
+
+const COLORS = {
+  background: "#f8fafc",
+  waveform: "#cbd5e1",
+  playedFill: "rgba(249, 115, 22, 0.12)",
+  playheadLine: "#f97316",
+  selectionFill: "rgba(59, 130, 246, 0.20)",
+  selectionLine: "#2563eb",
+  text: "#6b7280",
+};
+
+export function createWaveform({ mountEl, onSelectionChange }) {
+  const canvas = document.createElement("canvas");
+  canvas.className = "waveform-canvas";
+  canvas.height = 140;
+  canvas.style.touchAction = "none";
+  mountEl.appendChild(canvas);
+
+  const ctx = canvas.getContext("2d");
+
+  let audioBuffer = null;
+  let selection = { start: null, end: null };
+  let playbackTime = null;
+  let dragging = false;
+  let cachedPeaks = null;
+  let cachedPeaksWidth = 0;
+
+  function resize() {
+    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
+    canvas.height = 140;
+    draw();
+  }
+
+  window.addEventListener("resize", resize);
+
+  canvas.addEventListener("pointerdown", handlePointerDown);
+  canvas.addEventListener("pointermove", handlePointerMove);
+  canvas.addEventListener("pointerup", handlePointerUp);
+  canvas.addEventListener("pointerleave", handlePointerUp);
+
+  resize();
+
+  function getDuration() {
+    return audioBuffer?.duration ?? 0;
+  }
+
+  function getNormalizedSelection() {
+    const duration = getDuration();
+    return {
+      start: Number.isFinite(selection.start) ? clamp(selection.start, 0, duration) : null,
+      end: Number.isFinite(selection.end) ? clamp(selection.end, 0, duration) : null,
+    };
+  }
+
+  function getNormalizedPlaybackTime() {
+    const duration = getDuration();
+    return Number.isFinite(playbackTime) ? clamp(playbackTime, 0, duration) : null;
+  }
+
+  function drawPlaceholder(message) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+  }
+
+  function xToTime(x) {
+    const duration = getDuration();
+    if (!duration) {
+      return 0;
+    }
+
+    return (clamp(x, 0, canvas.width) / canvas.width) * duration;
+  }
+
+  function timeToX(time) {
+    const duration = getDuration();
+    if (!duration) {
+      return 0;
+    }
+
+    return (clamp(time, 0, duration) / duration) * canvas.width;
+  }
+
+  function computePeaks() {
+    if (!audioBuffer) {
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+      return null;
+    }
+
+    if (cachedPeaks && cachedPeaksWidth === canvas.width) {
+      return cachedPeaks;
+    }
+
+    const channelData = audioBuffer.getChannelData(0);
+    const width = canvas.width;
+    const step = Math.max(1, Math.ceil(channelData.length / width));
+    const peaks = new Array(width);
+
+    for (let x = 0; x < width; x += 1) {
+      let min = 1;
+      let max = -1;
+      const offset = x * step;
+
+      for (let i = 0; i < step; i += 1) {
+        const sample = channelData[offset + i];
+        if (sample === undefined) {
+          break;
+        }
+        if (sample < min) {
+          min = sample;
+        }
+        if (sample > max) {
+          max = sample;
+        }
+      }
+
+      peaks[x] = { min, max };
+    }
+
+    cachedPeaks = peaks;
+    cachedPeaksWidth = width;
+    return peaks;
+  }
+
+  function draw() {
+    if (!audioBuffer) {
+      drawPlaceholder("Pick a track to see the waveform.");
+      return;
+    }
+
+    const peaks = computePeaks();
+    const amplitude = canvas.height / 2;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = COLORS.waveform;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      const peak = peaks[x];
+      ctx.fillRect(x, (1 + peak.min) * amplitude, 1, Math.max(1, (peak.max - peak.min) * amplitude));
+    }
+
+    drawPlaybackRegion();
+    drawSelection();
+    drawPlayhead();
+  }
+
+  function drawMarker(time, label) {
+    const x = timeToX(time);
+
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = COLORS.selectionLine;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = COLORS.selectionLine;
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, Math.min(canvas.width - 20, x + 4), 6);
+  }
+
+  function drawPlaybackRegion() {
+    const currentTime = getNormalizedPlaybackTime();
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    if (x <= 0) {
+      return;
+    }
+
+    ctx.fillStyle = COLORS.playedFill;
+    ctx.fillRect(0, 0, x, canvas.height);
+  }
+
+  function drawPlayhead() {
+    const currentTime = getNormalizedPlaybackTime();
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    ctx.strokeStyle = COLORS.playheadLine;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
+  function drawSelection() {
+    const current = getNormalizedSelection();
+
+    if (current.start == null && current.end == null) {
+      return;
+    }
+
+    if (current.start != null && current.end != null) {
+      const startX = timeToX(current.start);
+      const endX = timeToX(current.end);
+
+      ctx.fillStyle = COLORS.selectionFill;
+      ctx.fillRect(Math.min(startX, endX), 0, Math.abs(endX - startX), canvas.height);
+    }
+
+    if (current.start != null) {
+      drawMarker(current.start, "A");
+    }
+
+    if (current.end != null) {
+      drawMarker(current.end, "B");
+    }
+  }
+
+  function setSelection(nextSelection, { notify = false } = {}) {
+    selection = {
+      start: Number.isFinite(nextSelection?.start) ? nextSelection.start : null,
+      end: Number.isFinite(nextSelection?.end) ? nextSelection.end : null,
+    };
+
+    draw();
+
+    if (notify) {
+      onSelectionChange?.({ ...getNormalizedSelection() });
+    }
+  }
+
+  function setPlaybackTime(nextPlaybackTime) {
+    playbackTime = Number.isFinite(nextPlaybackTime) ? nextPlaybackTime : null;
+    draw();
+  }
+
+  async function loadFile(file) {
+    drawPlaceholder("Loading waveform…");
+
+    const arrayBuffer = await file.arrayBuffer();
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextCtor) {
+      audioBuffer = null;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+      drawPlaceholder("Waveform preview is unavailable in this browser.");
+      return;
+    }
+
+    const audioContext = new AudioContextCtor();
+
+    try {
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      playbackTime = 0;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+    } finally {
+      if (audioContext.close) {
+        await audioContext.close();
+      }
+    }
+
+    draw();
+  }
+
+  function clear() {
+    audioBuffer = null;
+    selection = { start: null, end: null };
+    playbackTime = null;
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
+    draw();
+  }
+
+  function handlePointerDown(event) {
+    if (!audioBuffer) {
+      return;
+    }
+
+    canvas.setPointerCapture(event.pointerId);
+    dragging = true;
+
+    const rect = canvas.getBoundingClientRect();
+    const time = xToTime(event.clientX - rect.left);
+
+    setSelection({ start: time, end: time }, { notify: true });
+  }
+
+  function handlePointerMove(event) {
+    if (!dragging || !audioBuffer) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const time = xToTime(event.clientX - rect.left);
+
+    setSelection({ start: selection.start, end: time }, { notify: true });
+  }
+
+  function handlePointerUp(event) {
+    if (dragging && canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+
+    dragging = false;
+  }
+
+  return {
+    clear,
+    loadFile,
+    setPlaybackTime,
+    setSelection,
+    getSelection: () => ({ ...getNormalizedSelection() }),
+  };
+}
+</file>
+
+<file path="src/app.js">
+/**
+ * @role composition-root
+ * @owns app bootstrap, controller composition, DOM event wiring, global error handling
+ * @not-owns business logic for profiles, tracks, sections, selection, or persistence
+ * @notes Keep this file thin; push feature logic into dedicated modules.
+ */
+
+import { openDatabase } from "./db.js";
+import { elements, renderTracks, setTrackCount } from "./ui.js";
+import { createProfilesController } from "./profiles-controller.js";
+import { createSectionsController } from "./sections-controller.js";
+import { createSelectionController } from "./selection-controller.js";
+import { createTracksController } from "./tracks-controller.js";
+import { createWaveform } from "./waveform.js";
+
+const audio = elements.audio;
+
+let selectionController;
+let sectionsController;
+let tracksController;
+
+const waveform = createWaveform({
+  mountEl: elements.waveformMount,
+  onSelectionChange: (selection) => {
+    selectionController.handleWaveformSelectionChange(selection);
+  },
+});
+
+selectionController = createSelectionController({
+  audio,
+  waveform,
+  renderSectionList: () => sectionsController.renderSectionList(),
+});
+
+tracksController = createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  renderSectionList: () => sectionsController.renderSectionList(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  handleError,
+});
+
+sectionsController = createSectionsController({
+  audio,
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
+  handleError,
+});
+
+const profilesController = createProfilesController({
+  refreshSections: () => sectionsController.refreshSections(),
+  handleError,
+});
+
+bindEvents();
+bootstrap().catch(handleError);
+
+async function bootstrap() {
+  await openDatabase();
+  await profilesController.ensureDefaultProfile();
+
+  renderTracks([], null);
+  setTrackCount("No folder selected.");
+  tracksController.setSpeed(Number(elements.speed.value));
+
+  await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
+  selectionController.refreshSelectionUi();
+}
+
+function bindEvents() {
+  elements.profileSelect.addEventListener("change", async (event) => {
+    profilesController.setCurrentProfileId(Number(event.target.value));
+    await sectionsController.refreshSections();
+  });
+
+  elements.newProfile.addEventListener("click", () => {
+    void profilesController.createProfile();
+  });
+
+  elements.pickFolder.addEventListener("click", () => {
+    void tracksController.pickMusicFolder();
+  });
+
+  elements.trackSelect.addEventListener("change", (event) => {
+    const nextIndex = Number(event.target.value);
+    void tracksController.selectTrackByIndex(nextIndex);
+  });
+
+  elements.markA.addEventListener("click", () => {
+    selectionController.setSelectionMarker("start");
+  });
+
+  elements.markB.addEventListener("click", () => {
+    selectionController.setSelectionMarker("end");
+  });
+
+  elements.saveSection.addEventListener("click", () => {
+    void sectionsController.saveSelectionAsSection();
+  });
+
+  elements.adaptivePlay.addEventListener("click", () => {
+    void sectionsController.playAdaptiveSection();
+  });
+
+  elements.speed.addEventListener("input", (event) => {
+    tracksController.setSpeed(Number(event.target.value));
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    tracksController.syncWaveformPlaybackPosition();
+    void sectionsController.handleAudioBoundary();
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("seeked", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("pause", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("ended", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  window.addEventListener("unload", () => {
+    tracksController.releaseCurrentTrackUrl();
+  });
+}
+
+function handleError(error) {
+  if (!error || error.name === "AbortError") {
+    return;
+  }
+
+  console.error(error);
+  window.alert(error.message || "Something went wrong.");
+}
+</file>
+
 <file path="repomix-instruction.md">
+<!--
+  @role repository-instructions
+  @owns repository-wide AI guidance, response-shape rules, and process rules for keeping ownership metadata current
+  @not-owns per-file implementation details that belong in file headers
+  @notes For comment-capable files, file headers are the authoritative source of per-file ownership.
+-->
+
 # Repository Instructions
 
 ## How this repository is used with AI
@@ -1713,21 +2194,39 @@ jobs:
 - This is a static browser app with no build step.
 - `index.html` contains markup only.
 - `styles.css` contains styling only.
-- `src/app.js` orchestrates behavior and event wiring.
-- `src/db.js` owns IndexedDB access.
-- `src/ui.js` owns DOM rendering and section list UI.
-- `src/waveform.js` owns waveform rendering and drag selection.
-- `repo-context.xml` is generated by GitHub Actions on non-`main` branch pushes and committed back to that same branch.
-- `repo-context.xml` should not be edited manually.
+- Prefer browser-native APIs over added dependencies.
+- Preserve compatibility with the existing IndexedDB database when possible.
+- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
+- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
+- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
+
+## File header convention
+
+For comment-capable files, keep a short header at the top of the file using this shape:
+
+- `@role`: what kind of module or file this is
+- `@owns`: what this file is responsible for
+- `@not-owns`: what should be changed elsewhere
+- `@notes`: optional short maintenance guidance
+
+Keep headers concise and high-signal. Do not turn them into long prose blocks.
+
+## Keeping ownership metadata current
+
+- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
+- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
+- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
+- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
+- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
+- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
+- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules.
 
 ## Change preferences
 
 - Favor small, composable modules over a single large file.
-- Preserve compatibility with the existing IndexedDB database when possible.
 - Avoid frameworks and build tooling unless explicitly requested.
 - Keep the app easy to edit by copy/pasting full files from chat responses.
-- Prefer browser-native APIs over added dependencies.
-- Minimize comprehenive refactors, but if a change drives a reorganization propose the minimal sensible refactor. 
+- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
 
 ## Expected response shape for code changes
 
@@ -1738,6 +2237,12 @@ jobs:
 
 <file path="index.html">
 <!doctype html>
+<!--
+  @role document-shell
+  @owns static markup, semantic structure, and script/style entrypoints
+  @not-owns runtime behavior or styling rules beyond structural classes and ids
+  @notes Keep this file markup-only.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -1826,6 +2331,13 @@ jobs:
 
 
 <instruction>
+<!--
+  @role repository-instructions
+  @owns repository-wide AI guidance, response-shape rules, and process rules for keeping ownership metadata current
+  @not-owns per-file implementation details that belong in file headers
+  @notes For comment-capable files, file headers are the authoritative source of per-file ownership.
+-->
+
 # Repository Instructions
 
 ## How this repository is used with AI
@@ -1841,26 +2353,43 @@ jobs:
 - This is a static browser app with no build step.
 - `index.html` contains markup only.
 - `styles.css` contains styling only.
-- `src/app.js` orchestrates behavior and event wiring.
-- `src/db.js` owns IndexedDB access.
-- `src/ui.js` owns DOM rendering and section list UI.
-- `src/waveform.js` owns waveform rendering and drag selection.
-- `repo-context.xml` is generated by GitHub Actions on non-`main` branch pushes and committed back to that same branch.
-- `repo-context.xml` should not be edited manually.
+- Prefer browser-native APIs over added dependencies.
+- Preserve compatibility with the existing IndexedDB database when possible.
+- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
+- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
+- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
+
+## File header convention
+
+For comment-capable files, keep a short header at the top of the file using this shape:
+
+- `@role`: what kind of module or file this is
+- `@owns`: what this file is responsible for
+- `@not-owns`: what should be changed elsewhere
+- `@notes`: optional short maintenance guidance
+
+Keep headers concise and high-signal. Do not turn them into long prose blocks.
+
+## Keeping ownership metadata current
+
+- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
+- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
+- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
+- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
+- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
+- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
+- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules.
 
 ## Change preferences
 
 - Favor small, composable modules over a single large file.
-- Preserve compatibility with the existing IndexedDB database when possible.
 - Avoid frameworks and build tooling unless explicitly requested.
 - Keep the app easy to edit by copy/pasting full files from chat responses.
-- Prefer browser-native APIs over added dependencies.
-- Minimize comprehenive refactors, but if a change drives a reorganization propose the minimal sensible refactor. 
+- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
 
 ## Expected response shape for code changes
 
 - Group output by file path.
 - Return the full contents of each changed file.
 - Keep explanations brief unless the user asks for deeper design rationale.
-
 </instruction>

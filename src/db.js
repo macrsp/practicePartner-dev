@@ -1,3 +1,10 @@
+/**
+ * @role persistence-layer
+ * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
+ * @not-owns business rules, UI updates, or controller orchestration
+ * @notes Preserve compatibility with existing user data whenever possible.
+ */
+
 import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
 
 let dbPromise = null;
@@ -34,6 +41,12 @@ export function openDatabase() {
             keyPath: "id",
             autoIncrement: true,
           });
+
+      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+        database.createObjectStore(STORES.SETTINGS, {
+          keyPath: "key",
+        });
+      }
 
       if (!profilesStore.indexNames.contains("byName")) {
         profilesStore.createIndex("byName", "name", { unique: false });
@@ -121,4 +134,14 @@ export function deleteSection(sectionId) {
 
 export function addPlayLog(play) {
   return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
 }

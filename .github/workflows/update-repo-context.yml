@@ -1,3 +1,8 @@
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes No logic change required for header-driven ownership; this workflow already republishes the instruction file and source files through Repomix.
+
 name: Update Repo Context
 
 on:
