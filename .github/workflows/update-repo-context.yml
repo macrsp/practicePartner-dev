@@ -1,0 +1,54 @@
+name: Update Repo Context
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - repo-context.xml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-repo-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate repo context
+        run: npx --yes repomix@1.11.1 --config repomix.config.json
+
+      - name: Upload repo context artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-context
+          path: repo-context.xml
+
+      - name: Commit updated repo context
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo-context.xml
+
+          if git diff --cached --quiet; then
+            echo "No repo context changes."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh repo context"
+          git push
