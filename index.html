@@ -1,31 +1,132 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Suzuki Practice Partner v0.2</title>
+<title>Suzuki Practice Partner</title>
+
 <style>
-body { font-family: system-ui; margin:20px; }
-.row { margin:8px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-button { padding:6px 10px; }
-select,input { padding:4px; }
-.small { font-size:0.9em; color:#555; }
-.box { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--text);
+}
+
+.container {
+  max-width: 1000px;
+  margin: auto;
+}
+
+h1 {
+  font-size: 22px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.05);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background .2s ease;
+}
+
+button:hover { background: var(--primary-dark); }
+
+button.secondary {
+  background: #e5e7eb;
+  color: var(--text);
+}
+
+select, input[type="range"] {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+audio {
+  width: 100%;
+  margin-top: 16px;
+  border-radius: 12px;
+}
+
+.mastery-pill {
+  background: #e0f2fe;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0369a1;
+}
+
+.section-row {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.section-row:hover {
+  background: #e2e8f0;
+}
+
+.small { font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
+<div class="container">
 
-<h2>Suzuki Practice Partner</h2>
+<h1>Suzuki Practice Partner</h1>
 
-<div class="box">
+<div class="card">
   <div class="row">
-    Profile:
+    <label>Profile</label>
     <select id="profileSelect"></select>
-    <button id="newProfile">New</button>
+    <button id="newProfile" class="secondary">New</button>
   </div>
 </div>
 
-<div class="box">
+<div class="card">
   <div class="row">
     <button id="pickFolder">Pick Music Folder</button>
     <span id="trackCount" class="small"></span>
@@ -36,40 +137,45 @@ select,input { padding:4px; }
   </div>
 
   <div class="row">
-    <button id="markA">Mark A</button>
-    <button id="markB">Mark B</button>
+    <button id="markA" class="secondary">Mark A</button>
+    <button id="markB" class="secondary">Mark B</button>
     <button id="saveSection">Save Section</button>
     <span id="abDisplay" class="small"></span>
   </div>
 
   <div class="row">
-    <select id="sectionSelect"></select>
-    <button id="playSection">Play</button>
     <button id="adaptivePlay">Adaptive Next</button>
     <label>
-      Loop <input type="checkbox" id="loopToggle">
+      Loop
+      <input type="checkbox" id="loopToggle">
     </label>
   </div>
 
   <div class="row">
-    Speed
+    <label>Speed</label>
     <input type="range" id="speed" min="0.5" max="1.5" step="0.01" value="1.0">
     <span id="speedVal">1.00</span>
   </div>
 
-  <div class="row small">
-    Mastery: <span id="masteryDisplay">–</span>
+  <div class="row">
+    <div class="mastery-pill">
+      Mastery: <span id="masteryDisplay">–</span>
+    </div>
   </div>
+
+  <div id="sectionList"></div>
+
+  <audio id="audio" controls></audio>
 </div>
 
-<audio id="audio" controls style="width:100%"></audio>
+</div>
 
 <script>
-/* ================================
-   DATA LAYER
-================================ */
+/* =========================
+   DATABASE
+========================= */
 
-const DB_NAME = "suzukiPracticeDB";
+const DB_NAME = "suzukiDB_v3";
 let db;
 let currentProfile = null;
 
@@ -79,7 +185,6 @@ function openDB() {
 
     req.onupgradeneeded = e => {
       const db = e.target.result;
-
       db.createObjectStore("profiles", { keyPath: "id", autoIncrement:true });
       db.createObjectStore("sections", { keyPath: "id", autoIncrement:true });
       db.createObjectStore("plays", { keyPath: "id", autoIncrement:true });
@@ -90,17 +195,16 @@ function openDB() {
   });
 }
 
-function tx(store, mode="readonly") {
-  return db.transaction(store, mode).objectStore(store);
+function store(name, mode="readonly") {
+  return db.transaction(name, mode).objectStore(name);
 }
 
-/* ================================
+/* =========================
    PROFILE SYSTEM
-================================ */
+========================= */
 
 async function loadProfiles() {
-  const store = tx("profiles");
-  const req = store.getAll();
+  const req = store("profiles").getAll();
   req.onsuccess = () => {
     const sel = document.getElementById("profileSelect");
     sel.innerHTML = "";
@@ -113,14 +217,15 @@ async function loadProfiles() {
     if(req.result.length){
       currentProfile = req.result[0].id;
       sel.value = currentProfile;
+      loadSections();
     }
   };
 }
 
-document.getElementById("newProfile").onclick = () => {
+document.getElementById("newProfile").onclick = ()=>{
   const name = prompt("Profile name?");
   if(!name) return;
-  tx("profiles","readwrite").add({ name });
+  store("profiles","readwrite").add({ name });
   setTimeout(loadProfiles,200);
 };
 
@@ -129,109 +234,111 @@ document.getElementById("profileSelect").onchange = e=>{
   loadSections();
 };
 
-/* ================================
+/* =========================
    TRACK LOADING
-================================ */
+========================= */
 
-let tracks = [];
-let currentTrack = null;
+let tracks=[];
+let currentTrack=null;
+const audio=document.getElementById("audio");
 
 document.getElementById("pickFolder").onclick = async ()=>{
   const dir = await window.showDirectoryPicker();
-  tracks = [];
-  for await (const [name,handle] of dir.entries()) {
+  tracks=[];
+  for await (const [name,handle] of dir.entries()){
     if(handle.kind==="file" && name.endsWith(".mp3")){
-      const file = await handle.getFile();
-      tracks.push({ name, file });
+      const file=await handle.getFile();
+      tracks.push({name,file});
     }
   }
-  const sel = document.getElementById("trackSelect");
+  const sel=document.getElementById("trackSelect");
   sel.innerHTML="";
   tracks.forEach((t,i)=>{
-    const opt = document.createElement("option");
+    const opt=document.createElement("option");
     opt.value=i;
     opt.textContent=t.name;
     sel.appendChild(opt);
   });
-  document.getElementById("trackCount").textContent = tracks.length+" tracks loaded";
+  document.getElementById("trackCount").textContent=tracks.length+" tracks loaded";
 };
 
 document.getElementById("trackSelect").onchange = e=>{
-  currentTrack = tracks[e.target.value];
-  const url = URL.createObjectURL(currentTrack.file);
-  audio.src = url;
+  currentTrack=tracks[e.target.value];
+  audio.src=URL.createObjectURL(currentTrack.file);
   loadSections();
 };
 
-/* ================================
+/* =========================
    SECTION SYSTEM
-================================ */
+========================= */
 
 let A=null,B=null;
 
-document.getElementById("markA").onclick = ()=>{
-  A = audio.currentTime;
+document.getElementById("markA").onclick=()=>{
+  A=audio.currentTime;
   updateAB();
 };
 
-document.getElementById("markB").onclick = ()=>{
-  B = audio.currentTime;
+document.getElementById("markB").onclick=()=>{
+  B=audio.currentTime;
   updateAB();
 };
 
 function updateAB(){
-  document.getElementById("abDisplay").textContent =
-    A!==null && B!==null ? 
-    `A=${A.toFixed(1)} B=${B.toFixed(1)}` : "";
+  document.getElementById("abDisplay").textContent=
+    A&&B?`A=${A.toFixed(1)} B=${B.toFixed(1)}`:"";
 }
 
-document.getElementById("saveSection").onclick = ()=>{
-  if(A===null||B===null||!currentTrack) return;
-  const name = prompt("Section name?");
-  tx("sections","readwrite").add({
-    profileId: currentProfile,
-    trackName: currentTrack.name,
-    start: Math.min(A,B),
-    end: Math.max(A,B),
-    mastery:0,
+document.getElementById("saveSection").onclick=()=>{
+  if(A==null||B==null||!currentTrack) return;
+  store("sections","readwrite").add({
+    profileId:currentProfile,
+    trackName:currentTrack.name,
+    start:Math.min(A,B),
+    end:Math.max(A,B),
     playCount:0,
+    mastery:0,
     lastPlayed:0
   });
   setTimeout(loadSections,200);
 };
 
 function loadSections(){
-  const store = tx("sections");
-  const req = store.getAll();
-  req.onsuccess = ()=>{
-    const sel = document.getElementById("sectionSelect");
-    sel.innerHTML="";
+  const req=store("sections").getAll();
+  req.onsuccess=()=>{
+    const list=document.getElementById("sectionList");
+    list.innerHTML="";
     req.result
       .filter(s=>s.profileId===currentProfile && (!currentTrack||s.trackName===currentTrack.name))
       .forEach(s=>{
-        const opt = document.createElement("option");
-        opt.value=s.id;
-        opt.textContent=`${s.trackName} (${s.start.toFixed(1)}-${s.end.toFixed(1)})`;
-        sel.appendChild(opt);
+        const div=document.createElement("div");
+        div.className="section-row";
+        div.textContent=`${s.trackName} (${s.start.toFixed(1)}-${s.end.toFixed(1)})`;
+        div.onclick=()=>playSection(s);
+        list.appendChild(div);
       });
   };
 }
 
-/* ================================
-   PLAY + LOOP
-================================ */
+function playSection(s){
+  audio.currentTime=s.start;
+  audio.play();
+  audio.dataset.sectionId=s.id;
+}
 
-const audio = document.getElementById("audio");
+/* =========================
+   LOOP + SPEED
+========================= */
 
-document.getElementById("speed").oninput = e=>{
-  audio.playbackRate = e.target.value;
-  document.getElementById("speedVal").textContent = Number(e.target.value).toFixed(2);
+document.getElementById("speed").oninput=e=>{
+  audio.playbackRate=e.target.value;
+  document.getElementById("speedVal").textContent=Number(e.target.value).toFixed(2);
 };
 
-audio.addEventListener("timeupdate", ()=>{
-  const secId = Number(document.getElementById("sectionSelect").value);
-  if(!secId) return;
-  tx("sections").get(secId).onsuccess=e=>{
+audio.addEventListener("timeupdate",()=>{
+  const id=audio.dataset.sectionId;
+  if(!id) return;
+  store("sections").get(Number(id)).onsuccess=e=>{
     const s=e.target.result;
     if(!s) return;
     if(audio.currentTime>=s.end){
@@ -245,77 +352,57 @@ audio.addEventListener("timeupdate", ()=>{
   };
 });
 
-document.getElementById("playSection").onclick = ()=>{
-  const secId = Number(document.getElementById("sectionSelect").value);
-  tx("sections").get(secId).onsuccess=e=>{
-    const s=e.target.result;
-    if(!s) return;
-    audio.currentTime=s.start;
-    audio.play();
-  };
-};
-
-/* ================================
+/* =========================
    LOGGING + MASTERY
-================================ */
+========================= */
 
 function logPlay(section){
-  const now = Date.now();
+  const now=Date.now();
   section.playCount++;
+  const days=(now-section.lastPlayed)/(1000*60*60*24);
   section.lastPlayed=now;
-
-  const days = (now - section.lastPlayed)/(1000*60*60*24);
-  section.mastery = Math.min(1,
-    0.3*(section.playCount/10) + 0.7*(1/(1+days))
+  section.mastery=Math.min(1,
+    0.5*(section.playCount/10)+0.5*(1/(1+days))
   );
 
-  tx("sections","readwrite").put(section);
-  tx("plays","readwrite").add({
-    sectionId: section.id,
-    timestamp: now,
-    speed: audio.playbackRate
+  store("sections","readwrite").put(section);
+  store("plays","readwrite").add({
+    sectionId:section.id,
+    timestamp:now,
+    speed:audio.playbackRate
   });
 
-  document.getElementById("masteryDisplay").textContent =
+  document.getElementById("masteryDisplay").textContent=
     section.mastery.toFixed(2);
 }
 
-/* ================================
-   ADAPTIVE SELECTION
-================================ */
+/* =========================
+   ADAPTIVE PLAY
+========================= */
 
-document.getElementById("adaptivePlay").onclick = ()=>{
-  const store = tx("sections");
-  store.getAll().onsuccess=e=>{
-    const sections=e.target.result
-      .filter(s=>s.profileId===currentProfile);
+document.getElementById("adaptivePlay").onclick=()=>{
+  store("sections").getAll().onsuccess=e=>{
+    const sections=e.target.result.filter(s=>s.profileId===currentProfile);
     if(!sections.length) return;
 
-    const weighted = sections.map(s=>{
-      const days = (Date.now()-s.lastPlayed)/(1000*60*60*24);
-      const priority = (1-s.mastery)*(1+days);
-      return { s, priority };
+    const weighted=sections.map(s=>{
+      const days=(Date.now()-s.lastPlayed)/(1000*60*60*24);
+      return {s,priority:(1-s.mastery)*(1+days)};
     });
 
     weighted.sort((a,b)=>b.priority-a.priority);
-    const chosen = weighted[0].s;
-
-    audio.currentTime=chosen.start;
-    audio.play();
-
-    document.getElementById("sectionSelect").value=chosen.id;
+    playSection(weighted[0].s);
   };
 };
 
-/* ================================
+/* =========================
    INIT
-================================ */
+========================= */
 
-(async function(){
+(async()=>{
   await openDB();
   await loadProfiles();
 })();
 </script>
-
 </body>
 </html>
