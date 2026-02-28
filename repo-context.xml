@@ -682,6 +682,197 @@ jobs:
           git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
+<file path="src/constants.js">
+export const DB_NAME = "suzukiDB_v4";
+export const DB_VERSION = 3;
+
+export const STORES = {
+  PROFILES: "profiles",
+  SECTIONS: "sections",
+  PLAYS: "plays",
+  SETTINGS: "settings",
+};
+
+export const SETTINGS_KEYS = {
+  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
+  MUSIC_FOLDER_NAME: "musicFolderName",
+  LAST_TRACK_NAME: "lastTrackName",
+};
+
+export const DEFAULT_PROFILE_NAME = "Default";
+
+export const SUPPORTED_AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+];
+</file>
+
+<file path="src/db.js">
+import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
+
+let dbPromise = null;
+
+export function openDatabase() {
+  if (dbPromise) {
+    return dbPromise;
+  }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const database = event.target.result;
+      const transaction = event.target.transaction;
+
+      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
+        ? transaction.objectStore(STORES.PROFILES)
+        : database.createObjectStore(STORES.PROFILES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
+        ? transaction.objectStore(STORES.SECTIONS)
+        : database.createObjectStore(STORES.SECTIONS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
+        ? transaction.objectStore(STORES.PLAYS)
+        : database.createObjectStore(STORES.PLAYS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+        database.createObjectStore(STORES.SETTINGS, {
+          keyPath: "key",
+        });
+      }
+
+      if (!profilesStore.indexNames.contains("byName")) {
+        profilesStore.createIndex("byName", "name", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileId")) {
+        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
+        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
+          unique: false,
+        });
+      }
+
+      if (!playsStore.indexNames.contains("bySectionId")) {
+        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  return dbPromise;
+}
+
+function runRequest(storeName, mode, action) {
+  return openDatabase().then(
+    (database) =>
+      new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        let request;
+        let result;
+
+        try {
+          request = action(store);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        if (request) {
+          request.onsuccess = () => {
+            result = request.result;
+          };
+          request.onerror = () => reject(request.error);
+        }
+
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
+        transaction.onabort = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
+      }),
+  );
+}
+
+export function getAllProfiles() {
+  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
+}
+
+export function addProfile(profile) {
+  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
+}
+
+export function getSectionsByProfile(profileId) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  );
+}
+
+export function addSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
+}
+
+export function updateSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
+}
+
+export function deleteSection(sectionId) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
+}
+
+export function addPlayLog(play) {
+  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
+}
+</file>
+
+<file path="src/state.js">
+export const state = {
+  profiles: [],
+  currentProfileId: null,
+  currentFolderHandle: null,
+  currentFolderName: null,
+  tracks: [],
+  currentTrack: null,
+  currentTrackUrl: null,
+  sections: [],
+  selection: {
+    start: null,
+    end: null,
+  },
+  focusedSectionId: null,
+  currentPlayingSectionId: null,
+};
+</file>
+
 <file path="src/app.js">
 import { DEFAULT_PROFILE_NAME, SETTINGS_KEYS } from "./constants.js";
 import {
@@ -917,18 +1108,23 @@ async function pickMusicFolder() {
     }
 
     if (state.currentFolderHandle && !state.tracks.length) {
+      const preferredTrackName = await getSetting(SETTINGS_KEYS.LAST_TRACK_NAME);
       const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
 
-      if (permissionState !== "granted") {
-        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+      if (permissionState === "granted") {
+        await loadTracksFromDirectory(state.currentFolderHandle, {
+          preferredTrackName: preferredTrackName ?? null,
+        });
+        return;
+      }
 
-        if (requestedState === "granted") {
-          const preferredTrackName = await getSetting(SETTINGS_KEYS.LAST_TRACK_NAME);
-          await loadTracksFromDirectory(state.currentFolderHandle, {
-            preferredTrackName: preferredTrackName ?? null,
-          });
-          return;
-        }
+      const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+
+      if (requestedState === "granted") {
+        await loadTracksFromDirectory(state.currentFolderHandle, {
+          preferredTrackName: preferredTrackName ?? null,
+        });
+        return;
       }
     }
 
@@ -1389,197 +1585,6 @@ function handleError(error) {
 }
 </file>
 
-<file path="src/constants.js">
-export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 3;
-
-export const STORES = {
-  PROFILES: "profiles",
-  SECTIONS: "sections",
-  PLAYS: "plays",
-  SETTINGS: "settings",
-};
-
-export const SETTINGS_KEYS = {
-  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
-  MUSIC_FOLDER_NAME: "musicFolderName",
-  LAST_TRACK_NAME: "lastTrackName",
-};
-
-export const DEFAULT_PROFILE_NAME = "Default";
-
-export const SUPPORTED_AUDIO_EXTENSIONS = [
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".flac",
-];
-</file>
-
-<file path="src/db.js">
-import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
-
-let dbPromise = null;
-
-export function openDatabase() {
-  if (dbPromise) {
-    return dbPromise;
-  }
-
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result;
-      const transaction = event.target.transaction;
-
-      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
-        ? transaction.objectStore(STORES.PROFILES)
-        : database.createObjectStore(STORES.PROFILES, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
-        ? transaction.objectStore(STORES.SECTIONS)
-        : database.createObjectStore(STORES.SECTIONS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
-        ? transaction.objectStore(STORES.PLAYS)
-        : database.createObjectStore(STORES.PLAYS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
-        database.createObjectStore(STORES.SETTINGS, {
-          keyPath: "key",
-        });
-      }
-
-      if (!profilesStore.indexNames.contains("byName")) {
-        profilesStore.createIndex("byName", "name", { unique: false });
-      }
-
-      if (!sectionsStore.indexNames.contains("byProfileId")) {
-        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
-      }
-
-      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
-        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
-          unique: false,
-        });
-      }
-
-      if (!playsStore.indexNames.contains("bySectionId")) {
-        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-  return dbPromise;
-}
-
-function runRequest(storeName, mode, action) {
-  return openDatabase().then(
-    (database) =>
-      new Promise((resolve, reject) => {
-        const transaction = database.transaction(storeName, mode);
-        const store = transaction.objectStore(storeName);
-        let request;
-        let result;
-
-        try {
-          request = action(store);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-
-        if (request) {
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          request.onerror = () => reject(request.error);
-        }
-
-        transaction.oncomplete = () => resolve(result);
-        transaction.onerror = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
-        transaction.onabort = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
-      }),
-  );
-}
-
-export function getAllProfiles() {
-  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
-}
-
-export function addProfile(profile) {
-  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
-}
-
-export function getSectionsByProfile(profileId) {
-  return runRequest(STORES.SECTIONS, "readonly", (store) =>
-    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
-  );
-}
-
-export function addSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
-}
-
-export function updateSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
-}
-
-export function deleteSection(sectionId) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
-}
-
-export function addPlayLog(play) {
-  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
-}
-
-export function getSetting(key) {
-  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
-    (record) => record?.value,
-  );
-}
-
-export function setSetting(key, value) {
-  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
-}
-</file>
-
-<file path="src/state.js">
-export const state = {
-  profiles: [],
-  currentProfileId: null,
-  currentFolderHandle: null,
-  currentFolderName: null,
-  tracks: [],
-  currentTrack: null,
-  currentTrackUrl: null,
-  sections: [],
-  selection: {
-    start: null,
-    end: null,
-  },
-  focusedSectionId: null,
-  currentPlayingSectionId: null,
-};
-</file>
-
 <file path="src/waveform.js">
 import { clamp } from "./utils.js";
 
@@ -1606,6 +1611,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   let selection = { start: null, end: null };
   let playbackTime = null;
   let dragging = false;
+  let cachedPeaks = null;
+  let cachedPeaksWidth = 0;
 
   function resize() {
     canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
@@ -1668,23 +1675,23 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     return (clamp(time, 0, duration) / duration) * canvas.width;
   }
 
-  function draw() {
+  function computePeaks() {
     if (!audioBuffer) {
-      drawPlaceholder("Pick a track to see the waveform.");
-      return;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+      return null;
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (cachedPeaks && cachedPeaksWidth === canvas.width) {
+      return cachedPeaks;
+    }
 
     const channelData = audioBuffer.getChannelData(0);
-    const step = Math.max(1, Math.ceil(channelData.length / canvas.width));
-    const amplitude = canvas.height / 2;
+    const width = canvas.width;
+    const step = Math.max(1, Math.ceil(channelData.length / width));
+    const peaks = new Array(width);
 
-    ctx.fillStyle = COLORS.waveform;
-
-    for (let x = 0; x < canvas.width; x += 1) {
+    for (let x = 0; x < width; x += 1) {
       let min = 1;
       let max = -1;
       const offset = x * step;
@@ -1702,7 +1709,32 @@ export function createWaveform({ mountEl, onSelectionChange }) {
         }
       }
 
-      ctx.fillRect(x, (1 + min) * amplitude, 1, Math.max(1, (max - min) * amplitude));
+      peaks[x] = { min, max };
+    }
+
+    cachedPeaks = peaks;
+    cachedPeaksWidth = width;
+    return peaks;
+  }
+
+  function draw() {
+    if (!audioBuffer) {
+      drawPlaceholder("Pick a track to see the waveform.");
+      return;
+    }
+
+    const peaks = computePeaks();
+    const amplitude = canvas.height / 2;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = COLORS.waveform;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      const peak = peaks[x];
+      ctx.fillRect(x, (1 + peak.min) * amplitude, 1, Math.max(1, (peak.max - peak.min) * amplitude));
     }
 
     drawPlaybackRegion();
@@ -1813,6 +1845,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
     if (!AudioContextCtor) {
       audioBuffer = null;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
       drawPlaceholder("Waveform preview is unavailable in this browser.");
       return;
     }
@@ -1822,6 +1856,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     try {
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
       playbackTime = 0;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
     } finally {
       if (audioContext.close) {
         await audioContext.close();
@@ -1835,6 +1871,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     audioBuffer = null;
     selection = { start: null, end: null };
     playbackTime = null;
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
     draw();
   }
 
