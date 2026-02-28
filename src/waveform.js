@@ -23,6 +23,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   let selection = { start: null, end: null };
   let playbackTime = null;
   let dragging = false;
+  let cachedPeaks = null;
+  let cachedPeaksWidth = 0;
 
   function resize() {
     canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
@@ -85,23 +87,23 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     return (clamp(time, 0, duration) / duration) * canvas.width;
   }
 
-  function draw() {
+  function computePeaks() {
     if (!audioBuffer) {
-      drawPlaceholder("Pick a track to see the waveform.");
-      return;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+      return null;
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (cachedPeaks && cachedPeaksWidth === canvas.width) {
+      return cachedPeaks;
+    }
 
     const channelData = audioBuffer.getChannelData(0);
-    const step = Math.max(1, Math.ceil(channelData.length / canvas.width));
-    const amplitude = canvas.height / 2;
+    const width = canvas.width;
+    const step = Math.max(1, Math.ceil(channelData.length / width));
+    const peaks = new Array(width);
 
-    ctx.fillStyle = COLORS.waveform;
-
-    for (let x = 0; x < canvas.width; x += 1) {
+    for (let x = 0; x < width; x += 1) {
       let min = 1;
       let max = -1;
       const offset = x * step;
@@ -119,7 +121,32 @@ export function createWaveform({ mountEl, onSelectionChange }) {
         }
       }
 
-      ctx.fillRect(x, (1 + min) * amplitude, 1, Math.max(1, (max - min) * amplitude));
+      peaks[x] = { min, max };
+    }
+
+    cachedPeaks = peaks;
+    cachedPeaksWidth = width;
+    return peaks;
+  }
+
+  function draw() {
+    if (!audioBuffer) {
+      drawPlaceholder("Pick a track to see the waveform.");
+      return;
+    }
+
+    const peaks = computePeaks();
+    const amplitude = canvas.height / 2;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = COLORS.waveform;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      const peak = peaks[x];
+      ctx.fillRect(x, (1 + peak.min) * amplitude, 1, Math.max(1, (peak.max - peak.min) * amplitude));
     }
 
     drawPlaybackRegion();
@@ -230,6 +257,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
     if (!AudioContextCtor) {
       audioBuffer = null;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
       drawPlaceholder("Waveform preview is unavailable in this browser.");
       return;
     }
@@ -239,6 +268,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     try {
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
       playbackTime = 0;
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
     } finally {
       if (audioContext.close) {
         await audioContext.close();
@@ -252,6 +283,8 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     audioBuffer = null;
     selection = { start: null, end: null };
     playbackTime = null;
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
     draw();
   }
 

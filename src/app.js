@@ -232,18 +232,23 @@ async function pickMusicFolder() {
     }
 
     if (state.currentFolderHandle && !state.tracks.length) {
+      const preferredTrackName = await getSetting(SETTINGS_KEYS.LAST_TRACK_NAME);
       const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
 
-      if (permissionState !== "granted") {
-        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+      if (permissionState === "granted") {
+        await loadTracksFromDirectory(state.currentFolderHandle, {
+          preferredTrackName: preferredTrackName ?? null,
+        });
+        return;
+      }
 
-        if (requestedState === "granted") {
-          const preferredTrackName = await getSetting(SETTINGS_KEYS.LAST_TRACK_NAME);
-          await loadTracksFromDirectory(state.currentFolderHandle, {
-            preferredTrackName: preferredTrackName ?? null,
-          });
-          return;
-        }
+      const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+
+      if (requestedState === "granted") {
+        await loadTracksFromDirectory(state.currentFolderHandle, {
+          preferredTrackName: preferredTrackName ?? null,
+        });
+        return;
       }
     }
 
