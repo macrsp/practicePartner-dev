@@ -1,6 +1,6 @@
 /**
  * @role utility-module
- * @owns pure helpers for formatting, sorting, normalization, clamping, and adaptive-choice logic
+ * @owns pure helpers for formatting, sorting, normalization, and clamping
  * @not-owns DOM updates, persistence, or mutable application state
  * @notes Prefer adding only side-effect-free helpers here.
  */
@@ -80,16 +80,4 @@ export function summarizeTrackCount(count) {
   }
 
   return `${count} track${count === 1 ? "" : "s"} loaded.`;
-}
-
-export function chooseAdaptiveSection(sections) {
-  return (
-    [...sections].sort(
-      (a, b) =>
-        a.mastery - b.mastery ||
-        a.lastPlayed - b.lastPlayed ||
-        a.playCount - b.playCount ||
-        a.start - b.start,
-    )[0] ?? null
-  );
 }

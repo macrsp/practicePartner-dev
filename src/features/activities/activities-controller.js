@@ -1,8 +1,8 @@
 /**
  * @role controller
- * @owns reusable-activity state refresh and CRUD orchestration
- * @not-owns activity list rendering, workspace track/section focus behavior, or low-level IndexedDB helpers
- * @notes Keep this controller focused on activity CRUD and activity-list refresh.
+ * @owns reusable-activity state refresh, CRUD orchestration, and workspace focus behavior for activity targets
+ * @not-owns activity list rendering, track/section internals, or low-level IndexedDB helpers
+ * @notes Keep this controller focused on activity CRUD, activity-list refresh, and workspace activity use flows.
  */
 
 import { state } from "../../app/state.js";
@@ -13,23 +13,56 @@ import {
   updateActivity,
 } from "../../persistence/activity-store.js";
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { createSectionLabel } from "../../shared/utils.js";
+import { renderActivities } from "./activities-ui.js";
 
 const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
 
-export function createActivitiesController({ handleError } = {}) {
+export function createActivitiesController({
+  selectTrackByIndex,
+  focusSection,
+  handleError,
+} = {}) {
   async function refreshActivities() {
     if (!state.currentProfileId) {
       state.activities = [];
+      state.selectedActivityId = null;
+      renderActivityList();
       return [];
     }
 
     const activities = await getActivitiesByProfile(state.currentProfileId);
-    state.activities = activities;
-    return activities;
+    state.activities = [...activities].sort(sortActivities);
+
+    if (!state.activities.some((activity) => activity.id === state.selectedActivityId)) {
+      state.selectedActivityId = null;
+    }
+
+    renderActivityList();
+    return state.activities;
+  }
+
+  function renderActivityList() {
+    const sectionsById = new Map(state.allSections.map((section) => [section.id, section]));
+
+    renderActivities({
+      currentProfileId: state.currentProfileId,
+      activities: state.activities,
+      selectedActivityId: state.selectedActivityId,
+      tracks: state.tracks,
+      sectionsById,
+      onUse: (activityId) => {
+        void activateActivity(activityId);
+      },
+      onDelete: (activityId) => {
+        void removeActivity(activityId);
+      },
+    });
   }
 
   async function createActivity(input) {
     try {
+      ensureActiveProfile();
       validateActivityInput(input);
 
       const activityId = await addActivity({
@@ -44,6 +77,8 @@ export function createActivitiesController({ handleError } = {}) {
       });
 
       await refreshActivities();
+      state.selectedActivityId = activityId;
+      renderActivityList();
       return activityId;
     } catch (error) {
       handleError?.(error);
@@ -53,6 +88,7 @@ export function createActivitiesController({ handleError } = {}) {
 
   async function saveActivity(activity) {
     try {
+      ensureActiveProfile();
       validateActivityInput(activity);
 
       await updateActivity({
@@ -66,9 +102,157 @@ export function createActivitiesController({ handleError } = {}) {
     }
   }
 
+  async function createTrackActivityFromCurrentTrack() {
+    try {
+      ensureActiveProfile();
+
+      if (!state.currentTrack) {
+        throw new Error("Pick a track first.");
+      }
+
+      const name = window.prompt("Activity name?", state.currentTrack.name)?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.TRACK,
+        trackName: state.currentTrack.name,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function createSectionActivityFromFocusedSection() {
+    try {
+      ensureActiveProfile();
+
+      const section = getFocusedSection();
+
+      if (!section) {
+        throw new Error("Select a saved section first.");
+      }
+
+      const defaultName = `${section.trackName} ${createSectionLabel(section)}`;
+      const name = window.prompt("Activity name?", defaultName)?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.SECTION,
+        sectionId: section.id,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function createCustomActivity() {
+    try {
+      ensureActiveProfile();
+
+      const name = window.prompt("Activity name?")?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      const customReference = window.prompt("Custom reference?")?.trim();
+
+      if (!customReference) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.CUSTOM,
+        customReference,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function activateActivity(activityId) {
+    try {
+      const activity = state.activities.find((item) => item.id === activityId);
+
+      if (!activity) {
+        return;
+      }
+
+      state.selectedActivityId = activity.id;
+      renderActivityList();
+
+      if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
+        const trackIndex = state.tracks.findIndex((track) => track.name === activity.trackName);
+
+        if (trackIndex === -1) {
+          throw new Error(
+            `Track "${activity.trackName}" is not available in the currently selected folder.`,
+          );
+        }
+
+        await selectTrackByIndex(trackIndex);
+        renderActivityList();
+        return;
+      }
+
+      if (activity.targetType === ACTIVITY_TARGET_TYPES.SECTION) {
+        const section = state.allSections.find((item) => item.id === activity.sectionId);
+
+        if (!section) {
+          throw new Error("This activity references a saved section that no longer exists.");
+        }
+
+        const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+        if (trackIndex === -1) {
+          throw new Error(
+            `Track "${section.trackName}" is not available in the currently selected folder.`,
+          );
+        }
+
+        await focusSection(section.id);
+        renderActivityList();
+        return;
+      }
+
+      throw new Error("This activity is a custom reference and is not directly playable.");
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
   async function removeActivity(activityId) {
     try {
+      const activity = state.activities.find((item) => item.id === activityId);
+
+      if (!activity) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete activity "${activity.name}"?`);
+
+      if (!confirmed) {
+        return;
+      }
+
       await deleteActivity(activityId);
+
+      if (state.selectedActivityId === activityId) {
+        state.selectedActivityId = null;
+      }
+
       await refreshActivities();
     } catch (error) {
       handleError?.(error);
@@ -77,10 +261,31 @@ export function createActivitiesController({ handleError } = {}) {
 
   return {
     refreshActivities,
+    renderActivityList,
     createActivity,
     saveActivity,
+    createTrackActivityFromCurrentTrack,
+    createSectionActivityFromFocusedSection,
+    createCustomActivity,
+    activateActivity,
     removeActivity,
   };
+}
+
+function ensureActiveProfile() {
+  if (!state.currentProfileId) {
+    throw new Error("Select a profile first.");
+  }
+}
+
+function getFocusedSection() {
+  const targetSectionId = state.currentPlayingSectionId ?? state.focusedSectionId;
+
+  if (targetSectionId == null) {
+    return null;
+  }
+
+  return state.allSections.find((section) => section.id === targetSectionId) ?? null;
 }
 
 function validateActivityInput(input) {
@@ -106,4 +311,15 @@ function validateActivityInput(input) {
   ) {
     throw new Error("Custom activities require a reference.");
   }
+}
+
+function sortActivities(a, b) {
+  return (
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
+    a.id - b.id
+  );
 }

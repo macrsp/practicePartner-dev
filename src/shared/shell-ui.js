@@ -24,7 +24,6 @@ export const elements = {
   trackSelect: getElement("trackSelect"),
 
   saveSection: getElement("saveSection"),
-  adaptivePlay: getElement("adaptivePlay"),
   loopToggle: getElement("loopToggle"),
 
   speed: getElement("speed"),
@@ -35,6 +34,12 @@ export const elements = {
 
   sectionSummary: getElement("sectionSummary"),
   sectionList: getElement("sectionList"),
+
+  addTrackActivity: getElement("addTrackActivity"),
+  addSectionActivity: getElement("addSectionActivity"),
+  addCustomActivity: getElement("addCustomActivity"),
+  activitySummary: getElement("activitySummary"),
+  activityList: getElement("activityList"),
 
   waveformMount: getElement("waveformMount"),
   audio: getElement("audio"),

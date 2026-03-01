@@ -85,79 +85,6 @@ styles.css
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/features/profiles/profiles-controller.js">
-/**
- * @role controller
- * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
- * @not-owns section logic, track logic, or direct IndexedDB schema management
- * @notes This controller may trigger section refreshes after profile changes.
- */
-
-import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
-import { addProfile, getAllProfiles } from "../../persistence/db.js";
-import { state } from "../../app/state.js";
-import { renderProfiles } from "./profiles-ui.js";
-
-export function createProfilesController({ refreshSections, handleError }) {
-  async function ensureDefaultProfile() {
-    const profiles = await getAllProfiles();
-
-    if (!profiles.length) {
-      await addProfile({ name: DEFAULT_PROFILE_NAME });
-    }
-  }
-
-  async function refreshProfiles() {
-    const profiles = await getAllProfiles();
-    state.profiles = profiles;
-
-    if (!profiles.length) {
-      state.currentProfileId = null;
-      renderProfiles([], null);
-      await refreshSections();
-      return;
-    }
-
-    if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
-      state.currentProfileId = profiles[0].id;
-    }
-
-    renderProfiles(profiles, state.currentProfileId);
-    await refreshSections();
-  }
-
-  async function createProfile() {
-    try {
-      const name = window.prompt("Profile name?");
-      const trimmed = name?.trim();
-
-      if (!trimmed) {
-        return;
-      }
-
-      const profileId = await addProfile({ name: trimmed });
-      state.currentProfileId = profileId;
-      await refreshProfiles();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  function setCurrentProfileId(profileId) {
-    state.currentProfileId = profileId;
-    state.focusedSectionId = null;
-    state.currentPlayingSectionId = null;
-  }
-
-  return {
-    ensureDefaultProfile,
-    refreshProfiles,
-    createProfile,
-    setCurrentProfileId,
-  };
-}
-</file>
-
 <file path="src/features/profiles/profiles-ui.js">
 /**
  * @role renderer
@@ -190,349 +117,6 @@ export function renderProfiles(profiles, currentProfileId) {
 
   elements.profileSelect.disabled = false;
   elements.profileSelect.value = String(currentProfileId);
-}
-</file>
-
-<file path="src/features/sections/sections-controller.js">
-/**
- * @role controller
- * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
- * @notes This controller coordinates with track loading when a section references another track.
- */
-
-import {
-  addPlayLog,
-  addSection,
-  deleteSection,
-  getSectionsByProfile,
-  updateSection,
-} from "../../persistence/db.js";
-import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
-import {
-  calculateMastery,
-  chooseAdaptiveSection,
-  createSectionLabel,
-  normalizeSectionRecord,
-  sortSections,
-} from "../../shared/utils.js";
-import { renderSections } from "./sections-ui.js";
-
-export function createSectionsController({
-  audio,
-  selectTrackByIndex,
-  refreshSelectionUi,
-  refreshMasteryUi,
-  syncPlaybackUi,
-  handleError,
-}) {
-  async function refreshSections() {
-    if (!state.currentProfileId) {
-      state.allSections = [];
-      state.sections = [];
-      renderSectionList();
-      refreshMasteryUi();
-      return;
-    }
-
-    const sections = await getSectionsByProfile(state.currentProfileId);
-    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
-
-    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
-      state.focusedSectionId = null;
-    }
-
-    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      state.currentPlayingSectionId = null;
-    }
-
-    renderSectionList();
-    refreshMasteryUi();
-  }
-
-  function getVisibleSections() {
-    const currentTrackName = state.currentTrack?.name;
-
-    if (!currentTrackName) {
-      return [];
-    }
-
-    return state.allSections.filter((section) => section.trackName === currentTrackName);
-  }
-
-  function getActiveVisibleSectionId(visibleSections) {
-    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      return state.currentPlayingSectionId;
-    }
-
-    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
-      return state.focusedSectionId;
-    }
-
-    return null;
-  }
-
-  function renderSectionList() {
-    const visibleSections = getVisibleSections();
-    state.sections = visibleSections;
-
-    renderSections({
-      sections: visibleSections,
-      activeSectionId: getActiveVisibleSectionId(visibleSections),
-      currentTrackName: state.currentTrack?.name ?? null,
-      onFocus: (sectionId) => {
-        void focusSection(sectionId);
-      },
-      onPlay: (sectionId) => {
-        void playSectionById(sectionId);
-      },
-      onDelete: (sectionId) => {
-        void removeSection(sectionId);
-      },
-    });
-  }
-
-  async function saveSelectionAsSection() {
-    try {
-      if (!state.currentProfileId) {
-        window.alert("Select a profile first.");
-        return;
-      }
-
-      if (!state.currentTrack) {
-        window.alert("Pick a track first.");
-        return;
-      }
-
-      if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Drag on the waveform to mark a section before saving.");
-        return;
-      }
-
-      const start = Math.min(state.selection.start, state.selection.end);
-      const end = Math.max(state.selection.start, state.selection.end);
-
-      if (Math.abs(end - start) < 0.05) {
-        window.alert("The selected section is too short.");
-        return;
-      }
-
-      const sectionId = await addSection({
-        profileId: state.currentProfileId,
-        trackName: state.currentTrack.name,
-        start,
-        end,
-        playCount: 0,
-        mastery: 0,
-        lastPlayed: 0,
-        createdAt: Date.now(),
-      });
-
-      state.focusedSectionId = sectionId;
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function focusSection(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
-        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
-      }
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function ensureTrackLoadedForSection(section) {
-    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-    if (trackIndex === -1) {
-      window.alert(
-        `Track "${section.trackName}" is not available in the currently selected folder.`,
-      );
-      return false;
-    }
-
-    if (state.currentTrack?.name !== section.trackName) {
-      await selectTrackByIndex(trackIndex, { preserveSelection: true });
-    }
-
-    return true;
-  }
-
-  async function playSectionById(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const ready = await ensureTrackLoadedForSection(section);
-
-      if (!ready) {
-        return;
-      }
-
-      state.currentPlayingSectionId = section.id;
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-
-      audio.currentTime = section.start;
-      syncPlaybackUi();
-      await audio.play();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function playAdaptiveSection() {
-    try {
-      if (!state.allSections.length) {
-        window.alert("There are no saved sections for this profile yet.");
-        return;
-      }
-
-      const nextSection = chooseAdaptiveSection(state.allSections);
-
-      if (!nextSection) {
-        return;
-      }
-
-      await playSectionById(nextSection.id);
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function handleAudioBoundary() {
-    if (!state.currentPlayingSectionId) {
-      return;
-    }
-
-    const activeSection = state.allSections.find(
-      (section) => section.id === state.currentPlayingSectionId,
-    );
-
-    if (!activeSection) {
-      return;
-    }
-
-    if (audio.currentTime < activeSection.end) {
-      return;
-    }
-
-    if (elements.loopToggle.checked) {
-      audio.currentTime = activeSection.start;
-      syncPlaybackUi();
-      return;
-    }
-
-    audio.pause();
-    audio.currentTime = activeSection.end;
-    syncPlaybackUi();
-
-    const completedSectionId = state.currentPlayingSectionId;
-    state.currentPlayingSectionId = null;
-    renderSectionList();
-
-    await finalizeSectionPlay(completedSectionId);
-  }
-
-  async function finalizeSectionPlay(sectionId) {
-    const section = state.allSections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    const now = Date.now();
-    const updatedSection = {
-      ...section,
-      playCount: section.playCount + 1,
-      lastPlayed: now,
-      mastery: calculateMastery(section, now),
-    };
-
-    await updateSection(updatedSection);
-    await addPlayLog({
-      sectionId,
-      timestamp: now,
-      speed: audio.playbackRate,
-    });
-
-    state.focusedSectionId = sectionId;
-    await refreshSections();
-  }
-
-  async function removeSection(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
-
-      if (!confirmed) {
-        return;
-      }
-
-      if (state.currentPlayingSectionId === sectionId) {
-        audio.pause();
-        state.currentPlayingSectionId = null;
-      }
-
-      if (state.focusedSectionId === sectionId) {
-        state.focusedSectionId = null;
-      }
-
-      await deleteSection(sectionId);
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  return {
-    refreshSections,
-    renderSectionList,
-    saveSelectionAsSection,
-    focusSection,
-    playSectionById,
-    playAdaptiveSection,
-    handleAudioBoundary,
-    removeSection,
-  };
 }
 </file>
 
@@ -729,265 +313,6 @@ export async function rememberLastTrackName(trackName) {
 }
 </file>
 
-<file path="src/features/tracks/tracks-controller.js">
-/**
- * @role controller
- * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
- * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
- * @notes Keep folder persistence delegated to music-folder-store.js.
- */
-
-import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
-import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
-import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
-import {
-  getRememberedMusicFolder,
-  rememberLastTrackName,
-  rememberMusicFolder,
-} from "./music-folder-store.js";
-
-export function createTracksController({
-  audio,
-  waveform,
-  refreshSelectionUi,
-  renderSectionList,
-  refreshMasteryUi,
-  handleError,
-}) {
-  async function restoreRememberedFolder() {
-    try {
-      const remembered = await getRememberedMusicFolder();
-
-      if (!remembered.handle) {
-        return;
-      }
-
-      state.currentFolderHandle = remembered.handle;
-      state.currentFolderName = remembered.name || remembered.handle.name || null;
-
-      const permissionState = await queryDirectoryPermission(remembered.handle);
-
-      if (permissionState === "granted") {
-        await loadTracksFromDirectory(remembered.handle, {
-          preferredTrackName: remembered.lastTrackName,
-        });
-        return;
-      }
-
-      showRememberedFolderStatus();
-    } catch (error) {
-      console.warn("Unable to restore remembered music folder.", error);
-      setTrackCount("No folder selected.");
-    }
-  }
-
-  async function pickMusicFolder() {
-    try {
-      if (!window.showDirectoryPicker) {
-        throw new Error("This browser does not support folder selection.");
-      }
-
-      const remembered = await getRememberedMusicFolder();
-
-      if (state.currentFolderHandle && !state.tracks.length) {
-        const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
-
-        if (permissionState === "granted") {
-          await loadTracksFromDirectory(state.currentFolderHandle, {
-            preferredTrackName: remembered.lastTrackName,
-          });
-          return;
-        }
-
-        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
-
-        if (requestedState === "granted") {
-          await loadTracksFromDirectory(state.currentFolderHandle, {
-            preferredTrackName: remembered.lastTrackName,
-          });
-          return;
-        }
-      }
-
-      const previousTrackName = state.currentTrack?.name ?? remembered.lastTrackName ?? null;
-      const directoryHandle = await window.showDirectoryPicker();
-
-      await rememberSelectedMusicFolder(directoryHandle);
-      await loadTracksFromDirectory(directoryHandle, {
-        preferredTrackName: previousTrackName,
-      });
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function rememberSelectedMusicFolder(directoryHandle) {
-    state.currentFolderHandle = directoryHandle;
-    state.currentFolderName = directoryHandle.name ?? null;
-    await rememberMusicFolder(directoryHandle);
-  }
-
-  async function loadTracksFromDirectory(directoryHandle, { preferredTrackName = null } = {}) {
-    const nextTracks = [];
-
-    for await (const [name, handle] of directoryHandle.entries()) {
-      if (handle.kind !== "file" || !isSupportedAudioFile(name)) {
-        continue;
-      }
-
-      const file = await handle.getFile();
-      nextTracks.push({ name, file });
-    }
-
-    nextTracks.sort(compareByName);
-    state.tracks = nextTracks;
-
-    renderTracks(state.tracks, null);
-    setTrackCount(summarizeTrackCount(nextTracks.length));
-
-    if (!nextTracks.length) {
-      clearCurrentTrack();
-      return;
-    }
-
-    const nextIndex = preferredTrackName
-      ? nextTracks.findIndex((track) => track.name === preferredTrackName)
-      : 0;
-
-    await selectTrackByIndex(nextIndex >= 0 ? nextIndex : 0);
-  }
-
-  async function queryDirectoryPermission(directoryHandle) {
-    if (!directoryHandle?.queryPermission) {
-      return "prompt";
-    }
-
-    return directoryHandle.queryPermission({ mode: "read" });
-  }
-
-  async function requestDirectoryPermission(directoryHandle) {
-    if (!directoryHandle?.requestPermission) {
-      return "granted";
-    }
-
-    return directoryHandle.requestPermission({ mode: "read" });
-  }
-
-  function showRememberedFolderStatus() {
-    const folderName = state.currentFolderName
-      ? `Remembered folder: ${state.currentFolderName}.`
-      : "Folder remembered.";
-    setTrackCount(`${folderName} Click Pick Music Folder to reconnect.`);
-  }
-
-  async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
-    const track = state.tracks[index];
-
-    if (!track) {
-      return;
-    }
-
-    audio.pause();
-    state.currentPlayingSectionId = null;
-    state.currentTrack = track;
-
-    if (!preserveSelection) {
-      state.selection = { start: null, end: null };
-      state.focusedSectionId = null;
-    }
-
-    renderTracks(state.tracks, track.name);
-
-    await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
-    await rememberLastTrackName(track.name);
-    syncWaveformPlaybackPosition();
-
-    refreshSelectionUi();
-    renderSectionList();
-    refreshMasteryUi();
-  }
-
-  function clearCurrentTrack() {
-    audio.pause();
-    state.currentPlayingSectionId = null;
-    state.currentTrack = null;
-    state.selection = { start: null, end: null };
-    state.focusedSectionId = null;
-
-    releaseCurrentTrackUrl();
-    audio.removeAttribute("src");
-    audio.load();
-
-    waveform.clear();
-    renderTracks(state.tracks, null);
-    refreshSelectionUi();
-    renderSectionList();
-    refreshMasteryUi();
-  }
-
-  async function loadAudioFile(file) {
-    releaseCurrentTrackUrl();
-
-    const objectUrl = URL.createObjectURL(file);
-    state.currentTrackUrl = objectUrl;
-
-    await new Promise((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        resolve();
-      };
-
-      const onError = () => {
-        cleanup();
-        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
-      };
-
-      const cleanup = () => {
-        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-        audio.removeEventListener("error", onError);
-      };
-
-      audio.addEventListener("loadedmetadata", onLoadedMetadata);
-      audio.addEventListener("error", onError);
-
-      audio.src = objectUrl;
-      audio.load();
-    });
-
-    audio.playbackRate = Number(elements.speed.value);
-  }
-
-  function releaseCurrentTrackUrl() {
-    if (!state.currentTrackUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(state.currentTrackUrl);
-    state.currentTrackUrl = null;
-  }
-
-  function setSpeed(value) {
-    audio.playbackRate = value;
-    setSpeedDisplay(value);
-  }
-
-  function syncWaveformPlaybackPosition() {
-    waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
-  }
-
-  return {
-    restoreRememberedFolder,
-    pickMusicFolder,
-    selectTrackByIndex,
-    clearCurrentTrack,
-    releaseCurrentTrackUrl,
-    setSpeed,
-    syncWaveformPlaybackPosition,
-  };
-}
-</file>
-
 <file path="src/features/tracks/tracks-ui.js">
 /**
  * @role renderer
@@ -1030,148 +355,6 @@ export function setTrackCount(text) {
 
 export function setSpeedDisplay(value) {
   elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
-}
-</file>
-
-<file path="src/shared/shell-ui.js">
-/**
- * @role renderer-support
- * @owns DOM element lookup shared across feature renderers and bootstrap wiring
- * @not-owns feature rendering logic, application state transitions, or persistence
- * @notes Keep this file limited to shell-level element access.
- */
-
-function getElement(id) {
-  const element = document.getElementById(id);
-
-  if (!element) {
-    throw new Error(`Missing required element: #${id}`);
-  }
-
-  return element;
-}
-
-export const elements = {
-  profileSelect: getElement("profileSelect"),
-  newProfile: getElement("newProfile"),
-
-  pickFolder: getElement("pickFolder"),
-  trackCount: getElement("trackCount"),
-  trackSelect: getElement("trackSelect"),
-
-  saveSection: getElement("saveSection"),
-  adaptivePlay: getElement("adaptivePlay"),
-  loopToggle: getElement("loopToggle"),
-
-  speed: getElement("speed"),
-  speedVal: getElement("speedVal"),
-
-  masteryDisplay: getElement("masteryDisplay"),
-  abDisplay: getElement("abDisplay"),
-
-  sectionSummary: getElement("sectionSummary"),
-  sectionList: getElement("sectionList"),
-
-  waveformMount: getElement("waveformMount"),
-  audio: getElement("audio"),
-};
-</file>
-
-<file path="src/shared/utils.js">
-/**
- * @role utility-module
- * @owns pure helpers for formatting, sorting, normalization, clamping, and adaptive-choice logic
- * @not-owns DOM updates, persistence, or mutable application state
- * @notes Prefer adding only side-effect-free helpers here.
- */
-
-import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
-
-const DAY_MS = 1000 * 60 * 60 * 24;
-
-export function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-export function isSupportedAudioFile(name) {
-  const lower = name.toLowerCase();
-  return SUPPORTED_AUDIO_EXTENSIONS.some((extension) => lower.endsWith(extension));
-}
-
-export function compareByName(a, b) {
-  return a.name.localeCompare(b.name, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-export function formatTime(totalSeconds) {
-  if (!Number.isFinite(totalSeconds)) {
-    return "—";
-  }
-
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds - mins * 60;
-  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
-}
-
-export function createSectionLabel(section) {
-  return `${formatTime(section.start)} → ${formatTime(section.end)}`;
-}
-
-export function normalizeSectionRecord(section) {
-  return {
-    ...section,
-    playCount: section.playCount ?? 0,
-    mastery: section.mastery ?? 0,
-    lastPlayed: section.lastPlayed ?? 0,
-    createdAt: section.createdAt ?? 0,
-  };
-}
-
-export function calculateMastery(section, now = Date.now()) {
-  const nextPlayCount = (section.playCount ?? 0) + 1;
-  const repetitionScore = Math.min(1, nextPlayCount / 10);
-
-  const daysSinceLastPlay = section.lastPlayed
-    ? Math.max(0, (now - section.lastPlayed) / DAY_MS)
-    : Infinity;
-
-  const recencyScore = Number.isFinite(daysSinceLastPlay) ? 1 / (1 + daysSinceLastPlay) : 0;
-
-  return Number(Math.min(1, 0.5 * repetitionScore + 0.5 * recencyScore).toFixed(2));
-}
-
-export function sortSections(a, b) {
-  return (
-    a.trackName.localeCompare(b.trackName, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }) ||
-    a.start - b.start ||
-    a.end - b.end ||
-    a.id - b.id
-  );
-}
-
-export function summarizeTrackCount(count) {
-  if (count === 0) {
-    return "No audio files found in the selected folder.";
-  }
-
-  return `${count} track${count === 1 ? "" : "s"} loaded.`;
-}
-
-export function chooseAdaptiveSection(sections) {
-  return (
-    [...sections].sort(
-      (a, b) =>
-        a.mastery - b.mastery ||
-        a.lastPlayed - b.lastPlayed ||
-        a.playCount - b.playCount ||
-        a.start - b.start,
-    )[0] ?? null
-  );
 }
 </file>
 
@@ -1553,328 +736,666 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 }
 </file>
 
-<file path="src/app/bootstrap.js">
-/**
- * @role composition-root
- * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
- * @not-owns business logic for profiles, tracks, sections, activities, or persistence
- * @notes Keep this file thin; push feature logic into dedicated modules.
- */
-
-import { openDatabase } from "../persistence/db.js";
-import { elements } from "../shared/shell-ui.js";
-import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
-import { createProfilesController } from "../features/profiles/profiles-controller.js";
-import { createSectionsController } from "../features/sections/sections-controller.js";
-import { createSelectionController } from "../features/sections/selection-controller.js";
-import { createTracksController } from "../features/tracks/tracks-controller.js";
-import { createWaveform } from "../shared/waveform.js";
-
-const audio = elements.audio;
-
-let selectionController;
-let sectionsController;
-let tracksController;
-
-const waveform = createWaveform({
-  mountEl: elements.waveformMount,
-  onSelectionChange: (selection) => {
-    selectionController.handleWaveformSelectionChange(selection);
-  },
-});
-
-selectionController = createSelectionController({
-  waveform,
-  renderSectionList: () => sectionsController.renderSectionList(),
-});
-
-tracksController = createTracksController({
-  audio,
-  waveform,
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  renderSectionList: () => sectionsController.renderSectionList(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  handleError,
-});
-
-sectionsController = createSectionsController({
-  audio,
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
-  handleError,
-});
-
-const profilesController = createProfilesController({
-  refreshSections: () => sectionsController.refreshSections(),
-  handleError,
-});
-
-bindEvents();
-bootstrap().catch(handleError);
-
-async function bootstrap() {
-  await openDatabase();
-  await profilesController.ensureDefaultProfile();
-
-  renderTracks([], null);
-  setTrackCount("No folder selected.");
-  tracksController.setSpeed(Number(elements.speed.value));
-
-  await profilesController.refreshProfiles();
-  await tracksController.restoreRememberedFolder();
-  selectionController.refreshSelectionUi();
-}
-
-function bindEvents() {
-  elements.profileSelect.addEventListener("change", async (event) => {
-    profilesController.setCurrentProfileId(Number(event.target.value));
-    await sectionsController.refreshSections();
-  });
-
-  elements.newProfile.addEventListener("click", () => {
-    void profilesController.createProfile();
-  });
-
-  elements.pickFolder.addEventListener("click", () => {
-    void tracksController.pickMusicFolder();
-  });
-
-  elements.trackSelect.addEventListener("change", (event) => {
-    const nextIndex = Number(event.target.value);
-    void tracksController.selectTrackByIndex(nextIndex);
-  });
-
-  elements.saveSection.addEventListener("click", () => {
-    void sectionsController.saveSelectionAsSection();
-  });
-
-  elements.adaptivePlay.addEventListener("click", () => {
-    void sectionsController.playAdaptiveSection();
-  });
-
-  elements.speed.addEventListener("input", (event) => {
-    tracksController.setSpeed(Number(event.target.value));
-  });
-
-  audio.addEventListener("timeupdate", () => {
-    tracksController.syncWaveformPlaybackPosition();
-    void sectionsController.handleAudioBoundary();
-  });
-
-  audio.addEventListener("loadedmetadata", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("seeked", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("pause", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("ended", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  window.addEventListener("unload", () => {
-    tracksController.releaseCurrentTrackUrl();
-  });
-}
-
-function handleError(error) {
-  if (!error || error.name === "AbortError") {
-    return;
-  }
-
-  console.error(error);
-  window.alert(error.message || "Something went wrong.");
-}
-</file>
-
-<file path="src/app/state.js">
-/**
- * @role shared-runtime-state
- * @owns in-memory application state shared across features
- * @not-owns persistence, validation rules, or DOM rendering
- * @notes Keep this as plain data; behavior belongs in controllers or helpers.
- */
-
-export const state = {
-  profiles: [],
-  currentProfileId: null,
-
-  currentFolderHandle: null,
-  currentFolderName: null,
-  tracks: [],
-  currentTrack: null,
-  currentTrackUrl: null,
-
-  allSections: [],
-  sections: [],
-  selection: {
-    start: null,
-    end: null,
-  },
-  focusedSectionId: null,
-  currentPlayingSectionId: null,
-
-  activities: [],
-};
-</file>
-
-<file path="src/features/activities/activities-controller.js">
+<file path="src/features/profiles/profiles-controller.js">
 /**
  * @role controller
- * @owns reusable-activity state refresh and CRUD orchestration
- * @not-owns activity list rendering, workspace track/section focus behavior, or low-level IndexedDB helpers
- * @notes Keep this controller focused on activity CRUD and activity-list refresh.
+ * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
+ * @not-owns section logic, track logic, activity logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section and activity refreshes after profile changes.
  */
 
+import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
+import { addProfile, getAllProfiles } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
+import { renderProfiles } from "./profiles-ui.js";
+
+export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
+  async function ensureDefaultProfile() {
+    const profiles = await getAllProfiles();
+
+    if (!profiles.length) {
+      await addProfile({ name: DEFAULT_PROFILE_NAME });
+    }
+  }
+
+  async function refreshProfiles() {
+    const profiles = await getAllProfiles();
+    state.profiles = profiles;
+
+    if (!profiles.length) {
+      state.currentProfileId = null;
+      state.selectedActivityId = null;
+      renderProfiles([], null);
+      await Promise.all([refreshSections(), refreshActivities()]);
+      return;
+    }
+
+    if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
+      state.currentProfileId = profiles[0].id;
+    }
+
+    renderProfiles(profiles, state.currentProfileId);
+    await Promise.all([refreshSections(), refreshActivities()]);
+  }
+
+  async function createProfile() {
+    try {
+      const name = window.prompt("Profile name?");
+      const trimmed = name?.trim();
+
+      if (!trimmed) {
+        return;
+      }
+
+      const profileId = await addProfile({ name: trimmed });
+      state.currentProfileId = profileId;
+      state.selectedActivityId = null;
+      await refreshProfiles();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  function setCurrentProfileId(profileId) {
+    state.currentProfileId = profileId;
+    state.focusedSectionId = null;
+    state.currentPlayingSectionId = null;
+    state.selectedActivityId = null;
+  }
+
+  return {
+    ensureDefaultProfile,
+    refreshProfiles,
+    createProfile,
+    setCurrentProfileId,
+  };
+}
+</file>
+
+<file path="src/features/sections/sections-controller.js">
+/**
+ * @role controller
+ * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
+ * @notes This controller coordinates with track loading when a section references another track.
+ */
+
 import {
-  addActivity,
-  deleteActivity,
-  getActivitiesByProfile,
-  updateActivity,
-} from "../../persistence/activity-store.js";
-import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+  addPlayLog,
+  addSection,
+  deleteSection,
+  getSectionsByProfile,
+  updateSection,
+} from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
+import {
+  calculateMastery,
+  createSectionLabel,
+  normalizeSectionRecord,
+  sortSections,
+} from "../../shared/utils.js";
+import { renderSections } from "./sections-ui.js";
 
-const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
-
-export function createActivitiesController({ handleError } = {}) {
-  async function refreshActivities() {
+export function createSectionsController({
+  audio,
+  selectTrackByIndex,
+  refreshSelectionUi,
+  refreshMasteryUi,
+  syncPlaybackUi,
+  renderActivityList,
+  handleError,
+}) {
+  async function refreshSections() {
     if (!state.currentProfileId) {
-      state.activities = [];
+      state.allSections = [];
+      state.sections = [];
+      renderSectionList();
+      refreshMasteryUi();
+      renderActivityList();
+      return;
+    }
+
+    const sections = await getSectionsByProfile(state.currentProfileId);
+    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
+
+    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
+      state.focusedSectionId = null;
+    }
+
+    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      state.currentPlayingSectionId = null;
+    }
+
+    renderSectionList();
+    refreshMasteryUi();
+    renderActivityList();
+  }
+
+  function getVisibleSections() {
+    const currentTrackName = state.currentTrack?.name;
+
+    if (!currentTrackName) {
       return [];
     }
 
-    const activities = await getActivitiesByProfile(state.currentProfileId);
-    state.activities = activities;
-    return activities;
+    return state.allSections.filter((section) => section.trackName === currentTrackName);
   }
 
-  async function createActivity(input) {
-    try {
-      validateActivityInput(input);
+  function getActiveVisibleSectionId(visibleSections) {
+    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      return state.currentPlayingSectionId;
+    }
 
-      const activityId = await addActivity({
+    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
+      return state.focusedSectionId;
+    }
+
+    return null;
+  }
+
+  function renderSectionList() {
+    const visibleSections = getVisibleSections();
+    state.sections = visibleSections;
+
+    renderSections({
+      sections: visibleSections,
+      activeSectionId: getActiveVisibleSectionId(visibleSections),
+      currentTrackName: state.currentTrack?.name ?? null,
+      onFocus: (sectionId) => {
+        void focusSection(sectionId);
+      },
+      onPlay: (sectionId) => {
+        void playSectionById(sectionId);
+      },
+      onDelete: (sectionId) => {
+        void removeSection(sectionId);
+      },
+    });
+  }
+
+  async function saveSelectionAsSection() {
+    try {
+      if (!state.currentProfileId) {
+        window.alert("Select a profile first.");
+        return;
+      }
+
+      if (!state.currentTrack) {
+        window.alert("Pick a track first.");
+        return;
+      }
+
+      if (state.selection.start == null || state.selection.end == null) {
+        window.alert("Drag on the waveform to mark a section before saving.");
+        return;
+      }
+
+      const start = Math.min(state.selection.start, state.selection.end);
+      const end = Math.max(state.selection.start, state.selection.end);
+
+      if (Math.abs(end - start) < 0.05) {
+        window.alert("The selected section is too short.");
+        return;
+      }
+
+      const sectionId = await addSection({
         profileId: state.currentProfileId,
-        name: input.name.trim(),
-        targetType: input.targetType,
-        trackName: input.trackName ?? null,
-        sectionId: input.sectionId ?? null,
-        customReference: input.customReference?.trim() ?? null,
+        trackName: state.currentTrack.name,
+        start,
+        end,
+        playCount: 0,
+        mastery: 0,
+        lastPlayed: 0,
         createdAt: Date.now(),
-        updatedAt: Date.now(),
       });
 
-      await refreshActivities();
-      return activityId;
+      state.focusedSectionId = sectionId;
+      await refreshSections();
     } catch (error) {
-      handleError?.(error);
-      return null;
+      handleError(error);
     }
   }
 
-  async function saveActivity(activity) {
+  async function focusSection(sectionId) {
     try {
-      validateActivityInput(activity);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
-      await updateActivity({
-        ...activity,
-        updatedAt: Date.now(),
-      });
+      if (!section) {
+        return;
+      }
 
-      await refreshActivities();
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
+        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
+      }
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
     } catch (error) {
-      handleError?.(error);
+      handleError(error);
     }
   }
 
-  async function removeActivity(activityId) {
+  async function ensureTrackLoadedForSection(section) {
+    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+    if (trackIndex === -1) {
+      window.alert(
+        `Track "${section.trackName}" is not available in the currently selected folder.`,
+      );
+      return false;
+    }
+
+    if (state.currentTrack?.name !== section.trackName) {
+      await selectTrackByIndex(trackIndex, { preserveSelection: true });
+    }
+
+    return true;
+  }
+
+  async function playSectionById(sectionId) {
     try {
-      await deleteActivity(activityId);
-      await refreshActivities();
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return;
+      }
+
+      state.currentPlayingSectionId = section.id;
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+
+      audio.currentTime = section.start;
+      syncPlaybackUi();
+      await audio.play();
     } catch (error) {
-      handleError?.(error);
+      handleError(error);
+    }
+  }
+
+  async function handleAudioBoundary() {
+    if (!state.currentPlayingSectionId) {
+      return;
+    }
+
+    const activeSection = state.allSections.find(
+      (section) => section.id === state.currentPlayingSectionId,
+    );
+
+    if (!activeSection) {
+      return;
+    }
+
+    if (audio.currentTime < activeSection.end) {
+      return;
+    }
+
+    if (elements.loopToggle.checked) {
+      audio.currentTime = activeSection.start;
+      syncPlaybackUi();
+      return;
+    }
+
+    audio.pause();
+    audio.currentTime = activeSection.end;
+    syncPlaybackUi();
+
+    const completedSectionId = state.currentPlayingSectionId;
+    state.currentPlayingSectionId = null;
+    renderSectionList();
+
+    await finalizeSectionPlay(completedSectionId);
+  }
+
+  async function finalizeSectionPlay(sectionId) {
+    const section = state.allSections.find((item) => item.id === sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    const now = Date.now();
+    const updatedSection = {
+      ...section,
+      playCount: section.playCount + 1,
+      lastPlayed: now,
+      mastery: calculateMastery(section, now),
+    };
+
+    await updateSection(updatedSection);
+    await addPlayLog({
+      sectionId,
+      timestamp: now,
+      speed: audio.playbackRate,
+    });
+
+    state.focusedSectionId = sectionId;
+    await refreshSections();
+  }
+
+  async function removeSection(sectionId) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
+
+      if (!confirmed) {
+        return;
+      }
+
+      if (state.currentPlayingSectionId === sectionId) {
+        audio.pause();
+        state.currentPlayingSectionId = null;
+      }
+
+      if (state.focusedSectionId === sectionId) {
+        state.focusedSectionId = null;
+      }
+
+      await deleteSection(sectionId);
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
     }
   }
 
   return {
-    refreshActivities,
-    createActivity,
-    saveActivity,
-    removeActivity,
+    refreshSections,
+    renderSectionList,
+    saveSelectionAsSection,
+    focusSection,
+    playSectionById,
+    handleAudioBoundary,
+    removeSection,
   };
-}
-
-function validateActivityInput(input) {
-  if (!input?.name?.trim()) {
-    throw new Error("Activity name is required.");
-  }
-
-  if (!VALID_TARGET_TYPES.has(input.targetType)) {
-    throw new Error("Activity target type is invalid.");
-  }
-
-  if (input.targetType === ACTIVITY_TARGET_TYPES.TRACK && !input.trackName) {
-    throw new Error("Track activities require a track.");
-  }
-
-  if (input.targetType === ACTIVITY_TARGET_TYPES.SECTION && !input.sectionId) {
-    throw new Error("Section activities require a saved section.");
-  }
-
-  if (
-    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
-    !input.customReference?.trim()
-  ) {
-    throw new Error("Custom activities require a reference.");
-  }
 }
 </file>
 
-<file path="src/features/activities/activities-ui.js">
+<file path="src/features/tracks/tracks-controller.js">
 /**
- * @role renderer
- * @owns activity-label formatting and presentation helpers for activity UI
- * @not-owns activity persistence, workspace state transitions, or focus behavior
- * @notes Keep this file focused on presentation helpers for activity UI.
+ * @role controller
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
+ * @not-owns section CRUD, activity CRUD, profile management, or low-level IndexedDB helpers
+ * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
-import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
+import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
+import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
+import {
+  getRememberedMusicFolder,
+  rememberLastTrackName,
+  rememberMusicFolder,
+} from "./music-folder-store.js";
 
-export function getActivityTargetLabel(targetType) {
-  switch (targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK:
-      return "Track";
-    case ACTIVITY_TARGET_TYPES.SECTION:
-      return "Saved section";
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return "Custom";
-    default:
-      return "Unknown";
-  }
-}
+export function createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi,
+  renderSectionList,
+  refreshMasteryUi,
+  renderActivityList,
+  handleError,
+}) {
+  async function restoreRememberedFolder() {
+    try {
+      const remembered = await getRememberedMusicFolder();
 
-export function describeActivity(activity) {
-  if (!activity) {
-    return "";
+      if (!remembered.handle) {
+        return;
+      }
+
+      state.currentFolderHandle = remembered.handle;
+      state.currentFolderName = remembered.name || remembered.handle.name || null;
+
+      const permissionState = await queryDirectoryPermission(remembered.handle);
+
+      if (permissionState === "granted") {
+        await loadTracksFromDirectory(remembered.handle, {
+          preferredTrackName: remembered.lastTrackName,
+        });
+        return;
+      }
+
+      showRememberedFolderStatus();
+    } catch (error) {
+      console.warn("Unable to restore remembered music folder.", error);
+      setTrackCount("No folder selected.");
+    }
   }
 
-  switch (activity.targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK:
-      return `${activity.name} • Track: ${activity.trackName ?? "—"}`;
-    case ACTIVITY_TARGET_TYPES.SECTION:
-      return `${activity.name} • Saved section`;
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return `${activity.name} • ${activity.customReference ?? "Custom reference"}`;
-    default:
-      return activity.name ?? "";
+  async function pickMusicFolder() {
+    try {
+      if (!window.showDirectoryPicker) {
+        throw new Error("This browser does not support folder selection.");
+      }
+
+      const remembered = await getRememberedMusicFolder();
+
+      if (state.currentFolderHandle && !state.tracks.length) {
+        const permissionState = await queryDirectoryPermission(state.currentFolderHandle);
+
+        if (permissionState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
+        }
+
+        const requestedState = await requestDirectoryPermission(state.currentFolderHandle);
+
+        if (requestedState === "granted") {
+          await loadTracksFromDirectory(state.currentFolderHandle, {
+            preferredTrackName: remembered.lastTrackName,
+          });
+          return;
+        }
+      }
+
+      const previousTrackName = state.currentTrack?.name ?? remembered.lastTrackName ?? null;
+      const directoryHandle = await window.showDirectoryPicker();
+
+      await rememberSelectedMusicFolder(directoryHandle);
+      await loadTracksFromDirectory(directoryHandle, {
+        preferredTrackName: previousTrackName,
+      });
+    } catch (error) {
+      handleError(error);
+    }
   }
+
+  async function rememberSelectedMusicFolder(directoryHandle) {
+    state.currentFolderHandle = directoryHandle;
+    state.currentFolderName = directoryHandle.name ?? null;
+    await rememberMusicFolder(directoryHandle);
+  }
+
+  async function loadTracksFromDirectory(directoryHandle, { preferredTrackName = null } = {}) {
+    const nextTracks = [];
+
+    for await (const [name, handle] of directoryHandle.entries()) {
+      if (handle.kind !== "file" || !isSupportedAudioFile(name)) {
+        continue;
+      }
+
+      const file = await handle.getFile();
+      nextTracks.push({ name, file });
+    }
+
+    nextTracks.sort(compareByName);
+    state.tracks = nextTracks;
+
+    renderTracks(state.tracks, null);
+    setTrackCount(summarizeTrackCount(nextTracks.length));
+
+    if (!nextTracks.length) {
+      clearCurrentTrack();
+      return;
+    }
+
+    const nextIndex = preferredTrackName
+      ? nextTracks.findIndex((track) => track.name === preferredTrackName)
+      : 0;
+
+    await selectTrackByIndex(nextIndex >= 0 ? nextIndex : 0);
+  }
+
+  async function queryDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.queryPermission) {
+      return "prompt";
+    }
+
+    return directoryHandle.queryPermission({ mode: "read" });
+  }
+
+  async function requestDirectoryPermission(directoryHandle) {
+    if (!directoryHandle?.requestPermission) {
+      return "granted";
+    }
+
+    return directoryHandle.requestPermission({ mode: "read" });
+  }
+
+  function showRememberedFolderStatus() {
+    const folderName = state.currentFolderName
+      ? `Remembered folder: ${state.currentFolderName}.`
+      : "Folder remembered.";
+    setTrackCount(`${folderName} Click Pick Music Folder to reconnect.`);
+  }
+
+  async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
+    const track = state.tracks[index];
+
+    if (!track) {
+      return;
+    }
+
+    audio.pause();
+    state.currentPlayingSectionId = null;
+    state.currentTrack = track;
+
+    if (!preserveSelection) {
+      state.selection = { start: null, end: null };
+      state.focusedSectionId = null;
+    }
+
+    renderTracks(state.tracks, track.name);
+
+    await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
+    await rememberLastTrackName(track.name);
+    syncWaveformPlaybackPosition();
+
+    refreshSelectionUi();
+    renderSectionList();
+    refreshMasteryUi();
+    renderActivityList();
+  }
+
+  function clearCurrentTrack() {
+    audio.pause();
+    state.currentPlayingSectionId = null;
+    state.currentTrack = null;
+    state.selection = { start: null, end: null };
+    state.focusedSectionId = null;
+
+    releaseCurrentTrackUrl();
+    audio.removeAttribute("src");
+    audio.load();
+
+    waveform.clear();
+    renderTracks(state.tracks, null);
+    refreshSelectionUi();
+    renderSectionList();
+    refreshMasteryUi();
+    renderActivityList();
+  }
+
+  async function loadAudioFile(file) {
+    releaseCurrentTrackUrl();
+
+    const objectUrl = URL.createObjectURL(file);
+    state.currentTrackUrl = objectUrl;
+
+    await new Promise((resolve, reject) => {
+      const onLoadedMetadata = () => {
+        cleanup();
+        resolve();
+      };
+
+      const onError = () => {
+        cleanup();
+        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
+      };
+
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+        audio.removeEventListener("error", onError);
+      };
+
+      audio.addEventListener("loadedmetadata", onLoadedMetadata);
+      audio.addEventListener("error", onError);
+
+      audio.src = objectUrl;
+      audio.load();
+    });
+
+    audio.playbackRate = Number(elements.speed.value);
+  }
+
+  function releaseCurrentTrackUrl() {
+    if (!state.currentTrackUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(state.currentTrackUrl);
+    state.currentTrackUrl = null;
+  }
+
+  function setSpeed(value) {
+    audio.playbackRate = value;
+    setSpeedDisplay(value);
+  }
+
+  function syncWaveformPlaybackPosition() {
+    waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
+  }
+
+  return {
+    restoreRememberedFolder,
+    pickMusicFolder,
+    selectTrackByIndex,
+    clearCurrentTrack,
+    releaseCurrentTrackUrl,
+    setSpeed,
+    syncWaveformPlaybackPosition,
+  };
 }
 </file>
 
@@ -2122,6 +1643,141 @@ export const ACTIVITY_TARGET_TYPES = {
 };
 </file>
 
+<file path="src/shared/shell-ui.js">
+/**
+ * @role renderer-support
+ * @owns DOM element lookup shared across feature renderers and bootstrap wiring
+ * @not-owns feature rendering logic, application state transitions, or persistence
+ * @notes Keep this file limited to shell-level element access.
+ */
+
+function getElement(id) {
+  const element = document.getElementById(id);
+
+  if (!element) {
+    throw new Error(`Missing required element: #${id}`);
+  }
+
+  return element;
+}
+
+export const elements = {
+  profileSelect: getElement("profileSelect"),
+  newProfile: getElement("newProfile"),
+
+  pickFolder: getElement("pickFolder"),
+  trackCount: getElement("trackCount"),
+  trackSelect: getElement("trackSelect"),
+
+  saveSection: getElement("saveSection"),
+  loopToggle: getElement("loopToggle"),
+
+  speed: getElement("speed"),
+  speedVal: getElement("speedVal"),
+
+  masteryDisplay: getElement("masteryDisplay"),
+  abDisplay: getElement("abDisplay"),
+
+  sectionSummary: getElement("sectionSummary"),
+  sectionList: getElement("sectionList"),
+
+  addTrackActivity: getElement("addTrackActivity"),
+  addSectionActivity: getElement("addSectionActivity"),
+  addCustomActivity: getElement("addCustomActivity"),
+  activitySummary: getElement("activitySummary"),
+  activityList: getElement("activityList"),
+
+  waveformMount: getElement("waveformMount"),
+  audio: getElement("audio"),
+};
+</file>
+
+<file path="src/shared/utils.js">
+/**
+ * @role utility-module
+ * @owns pure helpers for formatting, sorting, normalization, and clamping
+ * @not-owns DOM updates, persistence, or mutable application state
+ * @notes Prefer adding only side-effect-free helpers here.
+ */
+
+import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+export function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function isSupportedAudioFile(name) {
+  const lower = name.toLowerCase();
+  return SUPPORTED_AUDIO_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+export function compareByName(a, b) {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+export function formatTime(totalSeconds) {
+  if (!Number.isFinite(totalSeconds)) {
+    return "—";
+  }
+
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds - mins * 60;
+  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
+}
+
+export function createSectionLabel(section) {
+  return `${formatTime(section.start)} → ${formatTime(section.end)}`;
+}
+
+export function normalizeSectionRecord(section) {
+  return {
+    ...section,
+    playCount: section.playCount ?? 0,
+    mastery: section.mastery ?? 0,
+    lastPlayed: section.lastPlayed ?? 0,
+    createdAt: section.createdAt ?? 0,
+  };
+}
+
+export function calculateMastery(section, now = Date.now()) {
+  const nextPlayCount = (section.playCount ?? 0) + 1;
+  const repetitionScore = Math.min(1, nextPlayCount / 10);
+
+  const daysSinceLastPlay = section.lastPlayed
+    ? Math.max(0, (now - section.lastPlayed) / DAY_MS)
+    : Infinity;
+
+  const recencyScore = Number.isFinite(daysSinceLastPlay) ? 1 / (1 + daysSinceLastPlay) : 0;
+
+  return Number(Math.min(1, 0.5 * repetitionScore + 0.5 * recencyScore).toFixed(2));
+}
+
+export function sortSections(a, b) {
+  return (
+    a.trackName.localeCompare(b.trackName, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    a.start - b.start ||
+    a.end - b.end ||
+    a.id - b.id
+  );
+}
+
+export function summarizeTrackCount(count) {
+  if (count === 0) {
+    return "No audio files found in the selected folder.";
+  }
+
+  return `${count} track${count === 1 ? "" : "s"} loaded.`;
+}
+</file>
+
 <file path=".gitignore">
 # @role ignore-rules
 # @owns repository-local ignore patterns for generated files and machine-specific clutter
@@ -2130,6 +1786,380 @@ export const ACTIVITY_TARGET_TYPES = {
 
 dist/
 .DS_Store
+</file>
+
+<file path="src/app/bootstrap.js">
+/**
+ * @role composition-root
+ * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
+ * @not-owns business logic for profiles, tracks, sections, activities, or persistence
+ * @notes Keep this file thin; push feature logic into dedicated modules.
+ */
+
+import { openDatabase } from "../persistence/db.js";
+import { elements } from "../shared/shell-ui.js";
+import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { createActivitiesController } from "../features/activities/activities-controller.js";
+import { createProfilesController } from "../features/profiles/profiles-controller.js";
+import { createSectionsController } from "../features/sections/sections-controller.js";
+import { createSelectionController } from "../features/sections/selection-controller.js";
+import { createTracksController } from "../features/tracks/tracks-controller.js";
+import { createWaveform } from "../shared/waveform.js";
+
+const audio = elements.audio;
+
+let selectionController;
+let sectionsController;
+let tracksController;
+let activitiesController;
+
+const waveform = createWaveform({
+  mountEl: elements.waveformMount,
+  onSelectionChange: (selection) => {
+    selectionController.handleWaveformSelectionChange(selection);
+  },
+});
+
+selectionController = createSelectionController({
+  waveform,
+  renderSectionList: () => sectionsController.renderSectionList(),
+});
+
+tracksController = createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  renderSectionList: () => sectionsController.renderSectionList(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  handleError,
+});
+
+sectionsController = createSectionsController({
+  audio,
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  handleError,
+});
+
+activitiesController = createActivitiesController({
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  focusSection: (...args) => sectionsController.focusSection(...args),
+  handleError,
+});
+
+const profilesController = createProfilesController({
+  refreshSections: () => sectionsController.refreshSections(),
+  refreshActivities: () => activitiesController.refreshActivities(),
+  handleError,
+});
+
+bindEvents();
+bootstrap().catch(handleError);
+
+async function bootstrap() {
+  await openDatabase();
+  await profilesController.ensureDefaultProfile();
+
+  renderTracks([], null);
+  setTrackCount("No folder selected.");
+  tracksController.setSpeed(Number(elements.speed.value));
+
+  await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
+  selectionController.refreshSelectionUi();
+}
+
+function bindEvents() {
+  elements.profileSelect.addEventListener("change", async (event) => {
+    profilesController.setCurrentProfileId(Number(event.target.value));
+    await profilesController.refreshProfiles();
+  });
+
+  elements.newProfile.addEventListener("click", () => {
+    void profilesController.createProfile();
+  });
+
+  elements.pickFolder.addEventListener("click", () => {
+    void tracksController.pickMusicFolder();
+  });
+
+  elements.trackSelect.addEventListener("change", (event) => {
+    const nextIndex = Number(event.target.value);
+    void tracksController.selectTrackByIndex(nextIndex);
+  });
+
+  elements.saveSection.addEventListener("click", () => {
+    void sectionsController.saveSelectionAsSection();
+  });
+
+  elements.addTrackActivity.addEventListener("click", () => {
+    void activitiesController.createTrackActivityFromCurrentTrack();
+  });
+
+  elements.addSectionActivity.addEventListener("click", () => {
+    void activitiesController.createSectionActivityFromFocusedSection();
+  });
+
+  elements.addCustomActivity.addEventListener("click", () => {
+    void activitiesController.createCustomActivity();
+  });
+
+  elements.speed.addEventListener("input", (event) => {
+    tracksController.setSpeed(Number(event.target.value));
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    tracksController.syncWaveformPlaybackPosition();
+    void sectionsController.handleAudioBoundary();
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("seeked", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("pause", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("ended", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  window.addEventListener("unload", () => {
+    tracksController.releaseCurrentTrackUrl();
+  });
+}
+
+function handleError(error) {
+  if (!error || error.name === "AbortError") {
+    return;
+  }
+
+  console.error(error);
+  window.alert(error.message || "Something went wrong.");
+}
+</file>
+
+<file path="src/app/state.js">
+/**
+ * @role shared-runtime-state
+ * @owns in-memory application state shared across features
+ * @not-owns persistence, validation rules, or DOM rendering
+ * @notes Keep this as plain data; behavior belongs in controllers or helpers.
+ */
+
+export const state = {
+  profiles: [],
+  currentProfileId: null,
+
+  currentFolderHandle: null,
+  currentFolderName: null,
+  tracks: [],
+  currentTrack: null,
+  currentTrackUrl: null,
+
+  allSections: [],
+  sections: [],
+  selection: {
+    start: null,
+    end: null,
+  },
+  focusedSectionId: null,
+  currentPlayingSectionId: null,
+
+  activities: [],
+  selectedActivityId: null,
+};
+</file>
+
+<file path="src/features/activities/activities-ui.js">
+/**
+ * @role renderer
+ * @owns activity-list rendering, activity summary messaging, and presentation helpers for activity UI
+ * @not-owns activity persistence, workspace state transitions, or focus behavior
+ * @notes Keep this file focused on presentation helpers and activity UI rendering.
+ */
+
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { elements } from "../../shared/shell-ui.js";
+import { createSectionLabel } from "../../shared/utils.js";
+
+export function getActivityTargetLabel(targetType) {
+  switch (targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return "Track";
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return "Saved section";
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return "Custom";
+    default:
+      return "Unknown";
+  }
+}
+
+export function describeActivity(activity, { tracks = [], sectionsById = new Map() } = {}) {
+  if (!activity) {
+    return "";
+  }
+
+  switch (activity.targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK: {
+      const isAvailable = tracks.some((track) => track.name === activity.trackName);
+      return `${getActivityTargetLabel(activity.targetType)} • ${activity.trackName ?? "—"}${
+        isAvailable ? "" : " • unavailable in current folder"
+      }`;
+    }
+
+    case ACTIVITY_TARGET_TYPES.SECTION: {
+      const section = sectionsById.get(activity.sectionId);
+
+      if (!section) {
+        return `${getActivityTargetLabel(activity.targetType)} • no longer exists`;
+      }
+
+      const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
+
+      return `${getActivityTargetLabel(activity.targetType)} • ${section.trackName} • ${createSectionLabel(section)}${
+        isTrackAvailable ? "" : " • track unavailable in current folder"
+      }`;
+    }
+
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return `${getActivityTargetLabel(activity.targetType)} • ${activity.customReference ?? "Custom reference"}`;
+
+    default:
+      return activity.name ?? "";
+  }
+}
+
+export function renderActivities({
+  currentProfileId,
+  activities,
+  selectedActivityId,
+  tracks,
+  sectionsById,
+  onUse,
+  onDelete,
+}) {
+  elements.activityList.innerHTML = "";
+
+  if (!currentProfileId) {
+    elements.activitySummary.textContent = "Select a profile to manage reusable activities.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a profile to create and browse reusable activities.";
+    elements.activityList.appendChild(empty);
+    return;
+  }
+
+  elements.activitySummary.textContent = activities.length
+    ? `Showing ${activities.length} reusable activit${activities.length === 1 ? "y" : "ies"} in this profile.`
+    : "No reusable activities in this profile yet.";
+
+  if (!activities.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent =
+      "Use the buttons above to add the current track, the focused saved section, or a custom reference.";
+    elements.activityList.appendChild(empty);
+    return;
+  }
+
+  activities.forEach((activity) => {
+    const useState = getActivityUseState(activity, sectionsById);
+
+    const row = document.createElement("div");
+    row.className = "section-row";
+    if (activity.id === selectedActivityId) {
+      row.classList.add("is-active");
+    }
+    if (!useState.interactive) {
+      row.classList.add("is-static");
+    }
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = activity.name;
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent = describeActivity(activity, { tracks, sectionsById });
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.textContent = useState.label;
+    useButton.disabled = !useState.interactive;
+    useButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (useState.interactive) {
+        onUse(activity.id);
+      }
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onDelete(activity.id);
+    });
+
+    actions.appendChild(useButton);
+    actions.appendChild(deleteButton);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+
+    if (useState.interactive) {
+      row.addEventListener("click", () => onUse(activity.id));
+    }
+
+    elements.activityList.appendChild(row);
+  });
+}
+
+function getActivityUseState(activity, sectionsById) {
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
+    return {
+      interactive: false,
+      label: "Reference only",
+    };
+  }
+
+  if (
+    activity.targetType === ACTIVITY_TARGET_TYPES.SECTION &&
+    !sectionsById.has(activity.sectionId)
+  ) {
+    return {
+      interactive: false,
+      label: "Unavailable",
+    };
+  }
+
+  return {
+    interactive: true,
+    label: "Use",
+  };
+}
 </file>
 
 <file path="styles.css">
@@ -2313,6 +2343,7 @@ audio {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -2341,6 +2372,15 @@ audio {
 .section-row.is-active {
   border-color: var(--primary);
   background: #dbeafe;
+}
+
+.section-row.is-static {
+  cursor: default;
+}
+
+.section-row.is-static:hover {
+  border-color: var(--border);
+  background: var(--card-alt);
 }
 
 .section-main {
@@ -2380,6 +2420,11 @@ audio {
 @media (max-width: 720px) {
   body {
     padding: 16px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .section-row {
@@ -2472,6 +2517,334 @@ jobs:
           git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
+<file path="src/features/activities/activities-controller.js">
+/**
+ * @role controller
+ * @owns reusable-activity state refresh, CRUD orchestration, and workspace focus behavior for activity targets
+ * @not-owns activity list rendering, track/section internals, or low-level IndexedDB helpers
+ * @notes Keep this controller focused on activity CRUD, activity-list refresh, and workspace activity use flows.
+ */
+
+import { state } from "../../app/state.js";
+import {
+  addActivity,
+  deleteActivity,
+  getActivitiesByProfile,
+  updateActivity,
+} from "../../persistence/activity-store.js";
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { createSectionLabel } from "../../shared/utils.js";
+import { renderActivities } from "./activities-ui.js";
+
+const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
+
+export function createActivitiesController({
+  selectTrackByIndex,
+  focusSection,
+  handleError,
+} = {}) {
+  async function refreshActivities() {
+    if (!state.currentProfileId) {
+      state.activities = [];
+      state.selectedActivityId = null;
+      renderActivityList();
+      return [];
+    }
+
+    const activities = await getActivitiesByProfile(state.currentProfileId);
+    state.activities = [...activities].sort(sortActivities);
+
+    if (!state.activities.some((activity) => activity.id === state.selectedActivityId)) {
+      state.selectedActivityId = null;
+    }
+
+    renderActivityList();
+    return state.activities;
+  }
+
+  function renderActivityList() {
+    const sectionsById = new Map(state.allSections.map((section) => [section.id, section]));
+
+    renderActivities({
+      currentProfileId: state.currentProfileId,
+      activities: state.activities,
+      selectedActivityId: state.selectedActivityId,
+      tracks: state.tracks,
+      sectionsById,
+      onUse: (activityId) => {
+        void activateActivity(activityId);
+      },
+      onDelete: (activityId) => {
+        void removeActivity(activityId);
+      },
+    });
+  }
+
+  async function createActivity(input) {
+    try {
+      ensureActiveProfile();
+      validateActivityInput(input);
+
+      const activityId = await addActivity({
+        profileId: state.currentProfileId,
+        name: input.name.trim(),
+        targetType: input.targetType,
+        trackName: input.trackName ?? null,
+        sectionId: input.sectionId ?? null,
+        customReference: input.customReference?.trim() ?? null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+      state.selectedActivityId = activityId;
+      renderActivityList();
+      return activityId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function saveActivity(activity) {
+    try {
+      ensureActiveProfile();
+      validateActivityInput(activity);
+
+      await updateActivity({
+        ...activity,
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function createTrackActivityFromCurrentTrack() {
+    try {
+      ensureActiveProfile();
+
+      if (!state.currentTrack) {
+        throw new Error("Pick a track first.");
+      }
+
+      const name = window.prompt("Activity name?", state.currentTrack.name)?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.TRACK,
+        trackName: state.currentTrack.name,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function createSectionActivityFromFocusedSection() {
+    try {
+      ensureActiveProfile();
+
+      const section = getFocusedSection();
+
+      if (!section) {
+        throw new Error("Select a saved section first.");
+      }
+
+      const defaultName = `${section.trackName} ${createSectionLabel(section)}`;
+      const name = window.prompt("Activity name?", defaultName)?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.SECTION,
+        sectionId: section.id,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function createCustomActivity() {
+    try {
+      ensureActiveProfile();
+
+      const name = window.prompt("Activity name?")?.trim();
+
+      if (!name) {
+        return null;
+      }
+
+      const customReference = window.prompt("Custom reference?")?.trim();
+
+      if (!customReference) {
+        return null;
+      }
+
+      return createActivity({
+        name,
+        targetType: ACTIVITY_TARGET_TYPES.CUSTOM,
+        customReference,
+      });
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function activateActivity(activityId) {
+    try {
+      const activity = state.activities.find((item) => item.id === activityId);
+
+      if (!activity) {
+        return;
+      }
+
+      state.selectedActivityId = activity.id;
+      renderActivityList();
+
+      if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
+        const trackIndex = state.tracks.findIndex((track) => track.name === activity.trackName);
+
+        if (trackIndex === -1) {
+          throw new Error(
+            `Track "${activity.trackName}" is not available in the currently selected folder.`,
+          );
+        }
+
+        await selectTrackByIndex(trackIndex);
+        renderActivityList();
+        return;
+      }
+
+      if (activity.targetType === ACTIVITY_TARGET_TYPES.SECTION) {
+        const section = state.allSections.find((item) => item.id === activity.sectionId);
+
+        if (!section) {
+          throw new Error("This activity references a saved section that no longer exists.");
+        }
+
+        const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+        if (trackIndex === -1) {
+          throw new Error(
+            `Track "${section.trackName}" is not available in the currently selected folder.`,
+          );
+        }
+
+        await focusSection(section.id);
+        renderActivityList();
+        return;
+      }
+
+      throw new Error("This activity is a custom reference and is not directly playable.");
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function removeActivity(activityId) {
+    try {
+      const activity = state.activities.find((item) => item.id === activityId);
+
+      if (!activity) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete activity "${activity.name}"?`);
+
+      if (!confirmed) {
+        return;
+      }
+
+      await deleteActivity(activityId);
+
+      if (state.selectedActivityId === activityId) {
+        state.selectedActivityId = null;
+      }
+
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  return {
+    refreshActivities,
+    renderActivityList,
+    createActivity,
+    saveActivity,
+    createTrackActivityFromCurrentTrack,
+    createSectionActivityFromFocusedSection,
+    createCustomActivity,
+    activateActivity,
+    removeActivity,
+  };
+}
+
+function ensureActiveProfile() {
+  if (!state.currentProfileId) {
+    throw new Error("Select a profile first.");
+  }
+}
+
+function getFocusedSection() {
+  const targetSectionId = state.currentPlayingSectionId ?? state.focusedSectionId;
+
+  if (targetSectionId == null) {
+    return null;
+  }
+
+  return state.allSections.find((section) => section.id === targetSectionId) ?? null;
+}
+
+function validateActivityInput(input) {
+  if (!input?.name?.trim()) {
+    throw new Error("Activity name is required.");
+  }
+
+  if (!VALID_TARGET_TYPES.has(input.targetType)) {
+    throw new Error("Activity target type is invalid.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.TRACK && !input.trackName) {
+    throw new Error("Track activities require a track.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.SECTION && !input.sectionId) {
+    throw new Error("Section activities require a saved section.");
+  }
+
+  if (
+    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
+    !input.customReference?.trim()
+  ) {
+    throw new Error("Custom activities require a reference.");
+  }
+}
+
+function sortActivities(a, b) {
+  return (
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
+    a.id - b.id
+  );
+}
+</file>
+
 <file path="planning-context.md">
 <!--
   @role planning-context
@@ -2498,7 +2871,7 @@ This file should **not** contain:
 * aspirational product vision items that are not part of the currently planned feature
 * implementation details, APIs, module structure, or file-level ownership rules
 
-If future ideas are useful during a planning conversation, they may be introduced temporarily in that conversation. They should only be added here if they become part of the currently agreed planning delta.
+If future ideas are useful during a planning conversation, they may be introduced temporarily in that conversation. They should only be added here if they become part of the current planning delta.
 
 ---
 
@@ -2518,7 +2891,7 @@ Use `repo-context.xml` or file-level code context when the conversation moves fr
 
 ## Product Summary
 
-This repository contains a browser-based music practice app for section-based repetition and adaptive practice.
+This repository contains a browser-based music practice app for section-based repetition, track-focused section work, and reusable practice activities.
 
 Core capabilities currently include:
 
@@ -2527,8 +2900,10 @@ Core capabilities currently include:
 * marking A/B points on a waveform
 * saving sections per profile
 * replaying saved sections
+* looping saved sections
 * tracking play count and mastery
-* adaptively selecting what to practice next
+* creating reusable named activities
+* using playable activities as shortcuts that load or focus existing workspace state
 
 The product should favor fast practice flow, clear visual feedback, and low-friction continuity.
 
@@ -2542,7 +2917,7 @@ The app should help a learner practice efficiently by making it easy to:
 * identify and save difficult passages
 * replay passages repeatedly
 * track repetition and progress
-* choose what to practice next with minimal friction
+* organize and revisit what to practice with minimal friction
 
 The UX should optimize for clarity and speed during active practice.
 
@@ -2644,13 +3019,7 @@ The current product is organized around these major regions:
 * If the activity targets a saved section, the app loads the associated track when needed and focuses the section range in the workspace.
 * If the target cannot be resolved, the app provides clear feedback.
 
-### 6. Adaptive Practice
-
-* User asks for the next section adaptively.
-* App selects a saved section based on low mastery / low recency / low play count.
-* App loads the appropriate track and plays the section there.
-
-### 7. Refresh And Resume Context
+### 6. Refresh And Resume Context
 
 * User reloads the page.
 * App restores persisted context where possible.
@@ -2702,6 +3071,12 @@ The most important product-level states are:
 * waveform visible
 * waveform selection active
 * playback position visible
+
+### Practice History And Mastery State
+
+* no recorded section practice yet
+* recorded section practice exists
+* focused or playing section mastery visible
 
 ### Activity State
 
@@ -2785,11 +3160,6 @@ This section records accepted product requirements that should not be reinterpre
   * Allocation: Track playback
   * The user can adjust playback speed for the current track.
 
-* **REQ-010 - A/B point marking from playback**
-
-  * Allocation: Selection and waveform
-  * The user can mark A and B points using the current playback position.
-
 * **REQ-011 - Waveform-based selection**
 
   * Allocation: Selection and waveform
@@ -2813,7 +3183,7 @@ This section records accepted product requirements that should not be reinterpre
 * **REQ-015 - Browse saved sections**
 
   * Allocation: Saved sections
-  * The user can view saved sections for the active profile.
+  * The user can view saved sections for the currently selected track within the active profile.
 
 * **REQ-016 - Focus saved section**
 
@@ -2850,11 +3220,6 @@ This section records accepted product requirements that should not be reinterpre
   * Allocation: Practice adaptation
   * The app shows a mastery value for the currently focused or playing section.
 
-* **REQ-023 - Adaptive next-section selection**
-
-  * Allocation: Practice adaptation
-  * The user can ask the app to choose the next section to practice adaptively from saved sections in the active profile.
-
 * **REQ-024 - Clear empty and missing-state messaging**
 
   * Allocation: User feedback and recovery
@@ -2864,18 +3229,6 @@ This section records accepted product requirements that should not be reinterpre
 
   * Allocation: User feedback and recovery
   * If a saved section refers to a track that is not available in the current folder, the app clearly informs the user.
-
-### Accepted target
-
-* None yet.
-
----
-
-## Current Planning Delta
-
-This section records only the requirement changes for the feature currently being planned.
-
-### Add
 
 * **REQ-026 - Reusable named practice activities**
 
@@ -2902,55 +3255,68 @@ This section records only the requirement changes for the feature currently bein
   * Allocation: Practice planning
   * When an activity targets a whole track or a saved section, the user can use that activity to load and focus the associated track or section in the existing workspace.
 
+### Accepted target
+
+* None currently.
+
+---
+
+## Current Planning Delta
+
+This section records only the requirement changes for the feature currently being planned.
+
+### Add
+
+* None currently.
+
 ### Change
 
-* **REQ-015 - Browse saved sections**
-
-  * Allocation: Saved sections
-  * Change from "The user can view saved sections for the active profile" to "The user can view saved sections for the currently selected track within the active profile."
+* None currently.
 
 ### Remove
 
-* **REQ-010 - A/B point marking from playback**
-
-  * Allocation: Selection and waveform
-  * Remove playback-position marker buttons from the main workspace. Waveform interaction becomes the primary way to define A/B selection there.
+* None currently.
 
 ### Under-discussion items
 
-* None currently blocking this feature slice.
+* None currently.
 
 ### Deferred
+
+* **REQ-023 - Adaptive next-section selection**
+
+  * Allocation: Practice adaptation
+  * Deferred. The current workspace implementation does not include an Adaptive Next control.
 
 * **REQ-029 - Today practice list**
 
   * Allocation: Practice planning
-  * Deferred to a later slice. The first slice does not add a Today practice list.
+  * Deferred to a later slice. The current workspace does not add a Today practice list.
 
 * **REQ-030 - Separate practice mode**
 
   * Allocation: Practice execution
-  * Deferred to a later slice. The first slice does not add a separate practice mode.
+  * Deferred to a later slice. The current workspace does not add a separate practice mode.
 
 * **REQ-031 - Workspace and practice navigation**
 
   * Allocation: Navigation and workflow
-  * Deferred to a later slice because the first slice stays within the workspace.
+  * Deferred to a later slice because the current implementation stays within the workspace.
 
 * **REQ-032 - Single-activity practice execution**
 
   * Allocation: Practice execution
-  * Deferred to a later slice. The first slice does not add one-activity-at-a-time practice execution UI.
+  * Deferred to a later slice. The current implementation does not add one-activity-at-a-time practice execution UI.
 
 * **REQ-033 - Playable activity launch**
 
   * Allocation: Practice execution
-  * Deferred to a later slice. Playable activities in the first slice act as workspace shortcuts rather than a separate execution mode.
+  * Deferred to a later slice. Playable activities currently act as workspace shortcuts rather than a separate execution mode.
 
 * **REQ-034 - Lightweight in-practice region selection**
 
   * Allocation: Practice execution
-  * Deferred to a later slice because the first slice does not add practice mode.
+  * Deferred to a later slice because the current implementation does not add practice mode.
 
 * practice categories as first-class user-managed entities
 
@@ -2958,9 +3324,9 @@ This section records only the requirement changes for the feature currently bein
 
 * structured fields for non-library custom targets beyond the initial freeform reference
 
-* ratings in the first practice-mode slice
+* ratings in an eventual practice-mode slice
 
-* timers and timer-driven stop or notification behavior in the first practice-mode slice
+* timers and timer-driven stop or notification behavior in an eventual practice-mode slice
 
 * saving new sections directly from a future practice mode
 
@@ -2970,7 +3336,13 @@ This section records only the requirement changes for the feature currently bein
 
 ### Rejected
 
+* **REQ-010 - A/B point marking from playback**
+
+  * Allocation: Selection and waveform
+  * Rejected for the workspace surface. Waveform interaction is the primary way to define A/B selection there.
+
 * overloading sections so they become the universal practice activity model
+
 * keeping separate Mark A and Mark B buttons on the main workspace screen as the primary section-selection flow
 
 ---
@@ -2981,25 +3353,26 @@ Use this section to record resolved planning decisions for the current or most r
 
 ### Accepted Decisions
 
-* The current main screen remains a workspace / planner surface.
-* The first slice should stay within the existing workspace rather than introducing a Today practice list or separate practice mode.
-* Saved sections should be shown only for the currently selected track in the main workspace.
+* The main screen remains a workspace / planner surface.
+* Saved sections are shown only for the currently selected track in the workspace.
 * Activities are reusable entities and should not be treated as plan-local only.
-* Activities should be explicitly nameable in the first slice.
+* Activities are explicitly nameable.
 * Sections remain specialized saved passages associated with tracks; they are valid activity targets but are not themselves activities.
-* Activity target types for the first slice are track, saved section, and freeform custom reference.
-* Quick-add should be favored for track-based and section-based activity creation, while freeform custom activities should still have a direct creation path.
+* Activity target types in the current implementation are track, saved section, and freeform custom reference.
+* Quick-add is favored for track-based and section-based activity creation, while freeform custom activities still have a direct creation path.
 * Freeform is the initial approach for non-library practice material.
-* Playable activities in the first slice should function as workspace shortcuts that load or focus the relevant track or section using the existing workspace controls.
+* Playable activities function as workspace shortcuts that load or focus the relevant track or section using the existing workspace controls.
 * Waveform drag / pointer selection is the intended main workflow for setting A/B ranges in the workspace.
+* Adaptive next-section selection is not part of the current workspace implementation.
 
 ### Rejected Or Deferred Directions
 
-* A dedicated Today practice list was deferred to keep the first slice smaller.
-* A separate practice mode was deferred to keep the first slice smaller.
-* One-activity-at-a-time execution UI was deferred to keep the first slice smaller.
-* In-practice temporary region selection was deferred with practice mode.
-* Early introduction of song sets, categories, timers, ratings, and named plans was deferred to keep the first slice incremental.
+* A dedicated Today practice list remains deferred.
+* A separate practice mode remains deferred.
+* One-activity-at-a-time execution UI remains deferred.
+* In-practice temporary region selection remains deferred with practice mode.
+* Adaptive next-section selection remains deferred.
+* Early introduction of song sets, categories, timers, ratings, and named plans remains deferred.
 
 ---
 
@@ -3007,142 +3380,72 @@ Use this section to record resolved planning decisions for the current or most r
 
 Use this section as the active planning queue for the current feature only.
 
-* None blocking implementation for the current slice.
+* None currently.
 
 ---
 
 ## Current Planning Focus
 
-Use this section to summarize the feature or problem currently under discussion.
+### Status
 
-### Problem
+* There is no active planning delta at the moment.
+* The most recently completed slice introduced reusable named activities in the existing workspace.
+* The current workspace now treats saved sections as track-scoped for browsing.
+* The workspace relies on waveform selection rather than playback-position marker buttons.
+* The current workspace does not include Adaptive Next.
 
-* The current app supports track-based section work, but it does not yet support reusable practice activities.
-* The current section browse model is profile-wide, which conflicts with the desired track-centric mental model for saved sections.
-* The current main workspace still exposes playback-position A/B marker buttons even though waveform selection is the intended interaction model.
-* The broader multi-surface planning direction proved too large for the first implementation slice.
+### Current Product Shape
 
-### Desired Outcome
+* The user selects a profile, music folder, and track in a single workspace surface.
+* The user uses waveform drag to create a valid range and save that range as a section.
+* The user browses only the saved sections for the currently selected track.
+* The user creates reusable activities that target either a whole track, a saved section, or a freeform custom reference.
+* The user uses playable activities to load or focus existing workspace state.
+* Freeform activities remain reusable references rather than directly playable items.
 
-* The app should support reusable named practice activities that can point to a whole track, a saved section, or freeform non-library material.
-* The first slice should let the user create and browse those activities in the existing workspace.
-* For playable activities, the user should be able to use an activity as a shortcut that loads or focuses the associated track or section in the existing workspace.
-* The main workspace should stay oriented around track selection, waveform inspection, section management, and activity creation / browsing for the active profile.
-* Saved sections in the workspace should be shown only for the currently selected track.
-* Playback-position Mark A / Mark B controls should be removed from the workspace in favor of waveform selection.
+### Important Edge Cases Still Relevant
 
-### Topic-Specific Constraints
-
-* The first slice should build on the existing track, waveform, and section foundation rather than replace it.
-* The first slice should stay incremental and avoid introducing too many new domains at once.
-* Non-library material should start as a freeform reference rather than a more structured schema.
-* The first slice should not add a Today practice list or a separate practice mode.
-* The first slice should not turn the workspace into a dedicated one-at-a-time activity execution surface.
-
-### Proposed Direction
-
-* Keep the product on a single workspace surface for this slice.
-* Keep sections as track-associated saved passages.
-* Make activities the reusable planning object introduced in this slice.
-* Support three activity target types in the first slice:
-
-  * whole track
-  * saved section
-  * freeform custom reference
-* Show saved sections only for the currently selected track in the workspace.
-* Remove playback-position Mark A / Mark B controls from the main workspace and rely on waveform selection there.
-* Favor quick-add flows for creating activities from the current track or a selected section.
-* Let playable activities act as shortcuts that load and focus existing workspace state rather than opening a new practice surface.
-
-### Risks / Edge Cases
-
-* A saved-section activity may reference a section that has been deleted.
-* A track-targeted or section-targeted activity may reference a track that is unavailable in the currently connected folder.
-* A custom activity target may have no playable media, so the workspace must handle both playable and non-playable activities clearly.
-* Activity focus in the workspace must not be mistaken for a separate practice mode.
-* If no track is selected in the workspace, the section area needs clear messaging that sections are track-specific.
-* The workspace needs clear distinction between saved sections and reusable activities so the two concepts do not blur.
-
-### Requirement Impact
-
-* Unchanged baseline requirements: REQ-001 through REQ-009, REQ-011 through REQ-014, REQ-016 through REQ-025.
-* Baseline requirements proposed to change: REQ-015.
-* Baseline requirements proposed to remove: REQ-010.
-* New requirements proposed for the current feature: REQ-026 through REQ-028, REQ-035, and REQ-036.
-* Deferred requirements from the larger earlier concept: REQ-029 through REQ-034.
-* Open requirement questions: none currently blocking the first slice.
-
-### Definition Of Ready For Implementation
-
-A planning topic is ready to move to implementation when:
-
-* the user-visible behavior is specified
-* major edge cases are identified
-* success and failure states are described
-* the affected requirements are clearly classified as unchanged, changed, added, removed, deferred, or rejected
-* the current planning delta is explicit
-* no major product-level ambiguity remains
-
-This topic is considered ready to move into implementation for the smaller first slice described in this file.
+* a saved-section activity may reference a section that has been deleted
+* a track-targeted or section-targeted activity may reference a track that is unavailable in the currently connected folder
+* a custom activity target has no playable media
+* activity focus in the workspace must remain distinct from any future dedicated practice mode
+* if no track is selected in the workspace, the section area needs clear messaging that sections are track-specific
+* the workspace needs clear distinction between saved sections and reusable activities so the two concepts do not blur
 
 ---
 
-## Implementation Handoff Template
+## Most Recent Completed Slice
 
 ### Feature Summary
 
-* Introduce reusable named practice activities in the existing workspace.
-* Re-scope workspace section browsing so it only shows saved sections for the currently selected track.
-* Remove playback-position Mark A / Mark B controls from the workspace and rely on waveform selection there.
-* Let playable activities act as workspace shortcuts that load or focus the associated track or saved section using the existing workspace controls.
+* Introduced reusable named practice activities in the existing workspace.
+* Re-scoped workspace section browsing so it only shows saved sections for the currently selected track.
+* Removed playback-position Mark A / Mark B controls from the workspace and relies on waveform selection there.
+* Uses playable activities as workspace shortcuts that load or focus the associated track or saved section using the existing workspace controls.
+* Removed the Adaptive Next workspace control from the current implementation.
 
 ### Requirement Impact
 
-* Unchanged baseline requirements: REQ-001 through REQ-009, REQ-011 through REQ-014, REQ-016 through REQ-025.
-* Changed baseline requirements: REQ-015.
-* New requirements: REQ-026 through REQ-028, REQ-035, and REQ-036.
-* Removed requirements: REQ-010.
-* Deferred or rejected items: REQ-029 through REQ-034, first-class categories, song sets, structured non-library targets beyond freeform, timers, ratings, cumulative teacher-note backlog UX, and named multi-day plans.
+* Promoted implemented requirements into the baseline: REQ-015, REQ-026, REQ-027, REQ-028, REQ-035, and REQ-036.
+* Kept REQ-021 and REQ-022 as implemented baseline behavior.
+* Deferred REQ-023.
+* Rejected REQ-010 for the workspace surface.
 
 ### User-Facing Behavior
 
 * In the workspace, the user selects a track, sees that track's waveform, and manages only that track's saved sections.
 * The user creates reusable named activities that target either a whole track, a saved section, or a freeform custom reference.
-* The user can browse reusable activities for the active profile in the workspace.
-* When an activity targets a whole track or a saved section, the user can use that activity to load and focus the associated track or section in the existing workspace.
-* Freeform activities are visible reusable references but are not directly playable in this first slice.
+* The user browses reusable activities for the active profile in the workspace.
+* When an activity targets a whole track or a saved section, the user uses that activity to load and focus the associated track or section in the existing workspace.
+* Freeform activities are visible reusable references but are not directly playable in the current implementation.
 * The user remains in a single workspace surface rather than navigating into a Today list or separate practice mode.
-
-### Important States And Edge Cases
-
-* no track selected in workspace
-* no saved sections for selected track
-* no activities for the active profile
-* non-playable freeform activity target
-* missing track for a track-targeted or section-targeted activity
-* deleted section referenced by an activity
-* activity focus in the workspace that must remain distinct from any future dedicated practice mode
 
 ### Persistence / User Continuity Impact
 
-* Existing profile, folder, track, section, and play-history continuity should remain intact.
-* Activities become new profile-scoped persisted planning state.
-* Activity targets should continue to respect current music-folder availability constraints when they rely on playable media.
-* Workspace continuity remains the primary continuity surface for this slice.
-
-### Likely Implementation Touchpoints
-
-* IndexedDB schema and persistence helpers for activities.
-* Main workspace UI and rendering changes for track-only section browsing and removal of Mark A / Mark B buttons.
-* New activity list and activity creation UI in the workspace.
-* Existing track / waveform / section focus coordination reused for playable activity shortcuts.
-
-### Notes For Implementation
-
-* Keep the first slice incremental and preserve the current section and playback foundation.
-* Do not broaden the first slice into a Today list, a separate practice mode, or one-at-a-time practice execution UI.
-* Treat freeform custom targets as the initial non-library model.
-* Keep the first slice centered on reusable activity creation, browsing, and workspace focus shortcuts.
+* Existing profile, folder, track, section, and play-history continuity remain intact.
+* Activities are now profile-scoped persisted planning state.
+* Activity targets continue to respect current music-folder availability constraints when they rely on playable media.
+* Workspace continuity remains the primary continuity surface.
 
 ---
 
@@ -3467,7 +3770,7 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
     <header class="page-header">
       <h1>Suzuki Practice Partner</h1>
       <p class="small">
-        Waveform-driven section practice with profiles, repeat tracking, and adaptive playback.
+        Waveform-driven section practice with profiles, repeat tracking, and reusable activity shortcuts.
       </p>
     </header>
 
@@ -3496,7 +3799,6 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
       </div>
 
       <div class="row">
-        <button id="adaptivePlay" type="button">Adaptive Next</button>
         <label class="checkbox-label" for="loopToggle">
           <input type="checkbox" id="loopToggle" />
           Loop section
@@ -3528,6 +3830,21 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
         </div>
       </div>
       <div id="sectionList" class="section-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Activities</h2>
+          <p id="activitySummary" class="small">Select a profile to manage reusable activities.</p>
+        </div>
+        <div class="section-actions">
+          <button id="addTrackActivity" type="button" class="secondary">Add Current Track</button>
+          <button id="addSectionActivity" type="button" class="secondary">Add Focused Section</button>
+          <button id="addCustomActivity" type="button">Add Custom Activity</button>
+        </div>
+      </div>
+      <div id="activityList" class="section-list"></div>
     </section>
   </div>
 

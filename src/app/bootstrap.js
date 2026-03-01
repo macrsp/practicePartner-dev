@@ -8,6 +8,7 @@
 import { openDatabase } from "../persistence/db.js";
 import { elements } from "../shared/shell-ui.js";
 import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { createActivitiesController } from "../features/activities/activities-controller.js";
 import { createProfilesController } from "../features/profiles/profiles-controller.js";
 import { createSectionsController } from "../features/sections/sections-controller.js";
 import { createSelectionController } from "../features/sections/selection-controller.js";
@@ -19,6 +20,7 @@ const audio = elements.audio;
 let selectionController;
 let sectionsController;
 let tracksController;
+let activitiesController;
 
 const waveform = createWaveform({
   mountEl: elements.waveformMount,
@@ -38,6 +40,7 @@ tracksController = createTracksController({
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   renderSectionList: () => sectionsController.renderSectionList(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  renderActivityList: () => activitiesController.renderActivityList(),
   handleError,
 });
 
@@ -47,11 +50,19 @@ sectionsController = createSectionsController({
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
   syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  handleError,
+});
+
+activitiesController = createActivitiesController({
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  focusSection: (...args) => sectionsController.focusSection(...args),
   handleError,
 });
 
 const profilesController = createProfilesController({
   refreshSections: () => sectionsController.refreshSections(),
+  refreshActivities: () => activitiesController.refreshActivities(),
   handleError,
 });
 
@@ -74,7 +85,7 @@ async function bootstrap() {
 function bindEvents() {
   elements.profileSelect.addEventListener("change", async (event) => {
     profilesController.setCurrentProfileId(Number(event.target.value));
-    await sectionsController.refreshSections();
+    await profilesController.refreshProfiles();
   });
 
   elements.newProfile.addEventListener("click", () => {
@@ -94,8 +105,16 @@ function bindEvents() {
     void sectionsController.saveSelectionAsSection();
   });
 
-  elements.adaptivePlay.addEventListener("click", () => {
-    void sectionsController.playAdaptiveSection();
+  elements.addTrackActivity.addEventListener("click", () => {
+    void activitiesController.createTrackActivityFromCurrentTrack();
+  });
+
+  elements.addSectionActivity.addEventListener("click", () => {
+    void activitiesController.createSectionActivityFromFocusedSection();
+  });
+
+  elements.addCustomActivity.addEventListener("click", () => {
+    void activitiesController.createCustomActivity();
   });
 
   elements.speed.addEventListener("input", (event) => {
