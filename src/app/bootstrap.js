@@ -7,6 +7,7 @@
 
 import { openDatabase } from "../persistence/db.js";
 import { elements } from "../shared/shell-ui.js";
+import { showAlert } from "../shared/dialog.js";
 import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
 import { createActivitiesController } from "../features/activities/activities-controller.js";
 import { createProfilesController } from "../features/profiles/profiles-controller.js";
@@ -147,11 +148,11 @@ function bindEvents() {
   });
 }
 
-function handleError(error) {
+async function handleError(error) {
   if (!error || error.name === "AbortError") {
     return;
   }
 
   console.error(error);
-  window.alert(error.message || "Something went wrong.");
+  await showAlert(error.message || "Something went wrong.");
 }

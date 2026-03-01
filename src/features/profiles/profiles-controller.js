@@ -8,6 +8,7 @@
 import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
 import { addProfile, getAllProfiles } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
+import { showPrompt } from "../../shared/dialog.js";
 import { renderProfiles } from "./profiles-ui.js";
 
 export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
@@ -41,7 +42,7 @@ export function createProfilesController({ refreshSections, refreshActivities, h
 
   async function createProfile() {
     try {
-      const name = window.prompt("Profile name?");
+      const name = await showPrompt("Profile name:", { title: "New Profile" });
       const trimmed = name?.trim();
 
       if (!trimmed) {

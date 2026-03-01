@@ -95,6 +95,16 @@
     </section>
   </div>
 
+  <dialog id="appDialog" class="app-dialog">
+    <h3 id="dialogTitle" class="dialog-title"></h3>
+    <p id="dialogMessage" class="dialog-message"></p>
+    <input id="dialogInput" type="text" class="dialog-input" hidden />
+    <div class="dialog-actions">
+      <button id="dialogCancel" type="button" class="secondary">Cancel</button>
+      <button id="dialogConfirm" type="button">OK</button>
+    </div>
+  </dialog>
+
   <script type="module" src="./src/app/bootstrap.js"></script>
 </body>
 </html>

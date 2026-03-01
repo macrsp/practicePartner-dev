@@ -13,6 +13,7 @@ import {
   updateActivity,
 } from "../../persistence/activity-store.js";
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
 import { createSectionLabel } from "../../shared/utils.js";
 import { renderActivities } from "./activities-ui.js";
 
@@ -110,14 +111,18 @@ export function createActivitiesController({
         throw new Error("Pick a track first.");
       }
 
-      const name = window.prompt("Activity name?", state.currentTrack.name)?.trim();
+      const name = await showPrompt("Activity name:", {
+        title: "Add Track Activity",
+        defaultValue: state.currentTrack.name,
+      });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.TRACK,
         trackName: state.currentTrack.name,
       });
@@ -138,14 +143,18 @@ export function createActivitiesController({
       }
 
       const defaultName = `${section.trackName} ${createSectionLabel(section)}`;
-      const name = window.prompt("Activity name?", defaultName)?.trim();
+      const name = await showPrompt("Activity name:", {
+        title: "Add Section Activity",
+        defaultValue: defaultName,
+      });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.SECTION,
         sectionId: section.id,
       });
@@ -159,22 +168,27 @@ export function createActivitiesController({
     try {
       ensureActiveProfile();
 
-      const name = window.prompt("Activity name?")?.trim();
+      const name = await showPrompt("Activity name:", { title: "Add Custom Activity" });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
-      const customReference = window.prompt("Custom reference?")?.trim();
+      const customReference = await showPrompt("Custom reference:", {
+        title: "Add Custom Activity",
+        placeholder: "e.g. Scales in D major, Bow exercises",
+      });
+      const trimmedRef = customReference?.trim();
 
-      if (!customReference) {
+      if (!trimmedRef) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.CUSTOM,
-        customReference,
+        customReference: trimmedRef,
       });
     } catch (error) {
       handleError?.(error);
@@ -241,7 +255,10 @@ export function createActivitiesController({
         return;
       }
 
-      const confirmed = window.confirm(`Delete activity "${activity.name}"?`);
+      const confirmed = await showConfirm(`Delete activity "${activity.name}"?`, {
+        title: "Delete Activity",
+        confirmLabel: "Delete",
+      });
 
       if (!confirmed) {
         return;
@@ -315,11 +332,11 @@ function validateActivityInput(input) {
 
 function sortActivities(a, b) {
   return (
+    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
     a.name.localeCompare(b.name, undefined, {
       numeric: true,
       sensitivity: "base",
     }) ||
-    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
     a.id - b.id
   );
 }

@@ -14,6 +14,7 @@ import {
 } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
 import { elements } from "../../shared/shell-ui.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
 import {
   calculateMastery,
   createSectionLabel,
@@ -34,7 +35,7 @@ export function createSectionsController({
   async function refreshSections() {
     if (!state.currentProfileId) {
       state.allSections = [];
-      state.sections = [];
+      state.visibleSections = [];
       renderSectionList();
       refreshMasteryUi();
       renderActivityList();
@@ -81,7 +82,7 @@ export function createSectionsController({
 
   function renderSectionList() {
     const visibleSections = getVisibleSections();
-    state.sections = visibleSections;
+    state.visibleSections = visibleSections;
 
     renderSections({
       sections: visibleSections,
@@ -102,17 +103,17 @@ export function createSectionsController({
   async function saveSelectionAsSection() {
     try {
       if (!state.currentProfileId) {
-        window.alert("Select a profile first.");
+        await showAlert("Select a profile first.");
         return;
       }
 
       if (!state.currentTrack) {
-        window.alert("Pick a track first.");
+        await showAlert("Pick a track first.");
         return;
       }
 
       if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Drag on the waveform to mark a section before saving.");
+        await showAlert("Drag on the waveform to mark a section before saving.");
         return;
       }
 
@@ -120,13 +121,23 @@ export function createSectionsController({
       const end = Math.max(state.selection.start, state.selection.end);
 
       if (Math.abs(end - start) < 0.05) {
-        window.alert("The selected section is too short.");
+        await showAlert("The selected section is too short.");
+        return;
+      }
+
+      const label = await showPrompt("Optional name for this section:", {
+        title: "Save Section",
+        placeholder: "e.g. Tricky passage, Coda, mm. 32–40",
+      });
+
+      if (label === null) {
         return;
       }
 
       const sectionId = await addSection({
         profileId: state.currentProfileId,
         trackName: state.currentTrack.name,
+        label: label.trim() || null,
         start,
         end,
         playCount: 0,
@@ -174,7 +185,7 @@ export function createSectionsController({
     const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
 
     if (trackIndex === -1) {
-      window.alert(
+      await showAlert(
         `Track "${section.trackName}" is not available in the currently selected folder.`,
       );
       return false;
@@ -288,7 +299,10 @@ export function createSectionsController({
         return;
       }
 
-      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
+      const confirmed = await showConfirm(`Delete section ${createSectionLabel(section)}?`, {
+        title: "Delete Section",
+        confirmLabel: "Delete",
+      });
 
       if (!confirmed) {
         return;

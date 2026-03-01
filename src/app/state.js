@@ -16,7 +16,7 @@ export const state = {
   currentTrackUrl: null,
 
   allSections: [],
-  sections: [],
+  visibleSections: [],
   selection: {
     start: null,
     end: null,
