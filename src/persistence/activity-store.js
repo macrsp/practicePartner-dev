@@ -1,11 +1,11 @@
 /**
  * @role persistence-layer
- * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
+ * @owns IndexedDB opening, upgrades, transactions, and shared store helpers
  * @not-owns business rules, UI updates, or controller orchestration
  * @notes Preserve compatibility with existing user data whenever possible.
  */
 
-import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
+import { DB_NAME, DB_VERSION, STORES } from "../shared/constants.js";
 
 let dbPromise = null;
 
@@ -42,11 +42,25 @@ export function openDatabase() {
             autoIncrement: true,
           });
 
-      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
-        database.createObjectStore(STORES.SETTINGS, {
-          keyPath: "key",
-        });
-      }
+      const settingsStore = database.objectStoreNames.contains(STORES.SETTINGS)
+        ? transaction.objectStore(STORES.SETTINGS)
+        : database.createObjectStore(STORES.SETTINGS, {
+            keyPath: "key",
+          });
+
+      const activitiesStore = database.objectStoreNames.contains(STORES.ACTIVITIES)
+        ? transaction.objectStore(STORES.ACTIVITIES)
+        : database.createObjectStore(STORES.ACTIVITIES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const todayListStore = database.objectStoreNames.contains(STORES.TODAY_LIST)
+        ? transaction.objectStore(STORES.TODAY_LIST)
+        : database.createObjectStore(STORES.TODAY_LIST, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
       if (!profilesStore.indexNames.contains("byName")) {
         profilesStore.createIndex("byName", "name", { unique: false });
@@ -65,6 +79,28 @@ export function openDatabase() {
       if (!playsStore.indexNames.contains("bySectionId")) {
         playsStore.createIndex("bySectionId", "sectionId", { unique: false });
       }
+
+      if (!activitiesStore.indexNames.contains("byProfileId")) {
+        activitiesStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileAndTargetType")) {
+        activitiesStore.createIndex("byProfileAndTargetType", ["profileId", "targetType"], {
+          unique: false,
+        });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileId")) {
+        todayListStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileAndOrder")) {
+        todayListStore.createIndex("byProfileAndOrder", ["profileId", "sortOrder"], {
+          unique: false,
+        });
+      }
+
+      void settingsStore;
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -74,7 +110,7 @@ export function openDatabase() {
   return dbPromise;
 }
 
-function runRequest(storeName, mode, action) {
+export function runRequest(storeName, mode, action) {
   return openDatabase().then(
     (database) =>
       new Promise((resolve, reject) => {
@@ -117,6 +153,12 @@ export function addProfile(profile) {
 export function getSectionsByProfile(profileId) {
   return runRequest(STORES.SECTIONS, "readonly", (store) =>
     store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  );
+}
+
+export function getSectionsByProfileAndTrack(profileId, trackName) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileAndTrack").getAll(IDBKeyRange.only([profileId, trackName])),
   );
 }
 

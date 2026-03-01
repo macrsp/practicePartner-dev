@@ -5,8 +5,8 @@
  * @notes Keep this module storage-focused; controllers should decide behavior.
  */
 
-import { SETTINGS_KEYS } from "./constants.js";
-import { getSetting, setSetting } from "./db.js";
+import { SETTINGS_KEYS } from "../../shared/constants.js";
+import { getSetting, setSetting } from "../../persistence/db.js";
 
 export async function getRememberedMusicFolder() {
   const [handle, name, lastTrackName] = await Promise.all([

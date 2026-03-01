@@ -1,6 +1,6 @@
 /**
  * @role controller
- * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking
+ * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking, and track-scoped section browsing
  * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
@@ -11,16 +11,17 @@ import {
   deleteSection,
   getSectionsByProfile,
   updateSection,
-} from "./db.js";
-import { state } from "./state.js";
-import { elements, renderSections } from "./ui.js";
+} from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
 import {
   calculateMastery,
   chooseAdaptiveSection,
   createSectionLabel,
   normalizeSectionRecord,
   sortSections,
-} from "./utils.js";
+} from "../../shared/utils.js";
+import { renderSections } from "./sections-ui.js";
 
 export function createSectionsController({
   audio,
@@ -32,6 +33,7 @@ export function createSectionsController({
 }) {
   async function refreshSections() {
     if (!state.currentProfileId) {
+      state.allSections = [];
       state.sections = [];
       renderSectionList();
       refreshMasteryUi();
@@ -39,13 +41,13 @@ export function createSectionsController({
     }
 
     const sections = await getSectionsByProfile(state.currentProfileId);
-    state.sections = sections.map(normalizeSectionRecord).sort(sortSections);
+    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
 
-    if (!state.sections.some((section) => section.id === state.focusedSectionId)) {
+    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
       state.focusedSectionId = null;
     }
 
-    if (!state.sections.some((section) => section.id === state.currentPlayingSectionId)) {
+    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
       state.currentPlayingSectionId = null;
     }
 
@@ -53,10 +55,35 @@ export function createSectionsController({
     refreshMasteryUi();
   }
 
+  function getVisibleSections() {
+    const currentTrackName = state.currentTrack?.name;
+
+    if (!currentTrackName) {
+      return [];
+    }
+
+    return state.allSections.filter((section) => section.trackName === currentTrackName);
+  }
+
+  function getActiveVisibleSectionId(visibleSections) {
+    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      return state.currentPlayingSectionId;
+    }
+
+    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
+      return state.focusedSectionId;
+    }
+
+    return null;
+  }
+
   function renderSectionList() {
+    const visibleSections = getVisibleSections();
+    state.sections = visibleSections;
+
     renderSections({
-      sections: state.sections,
-      activeSectionId: state.currentPlayingSectionId ?? state.focusedSectionId,
+      sections: visibleSections,
+      activeSectionId: getActiveVisibleSectionId(visibleSections),
       currentTrackName: state.currentTrack?.name ?? null,
       onFocus: (sectionId) => {
         void focusSection(sectionId);
@@ -83,7 +110,7 @@ export function createSectionsController({
       }
 
       if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Mark both A and B before saving a section.");
+        window.alert("Drag on the waveform to mark a section before saving.");
         return;
       }
 
@@ -115,7 +142,7 @@ export function createSectionsController({
 
   async function focusSection(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
@@ -160,7 +187,7 @@ export function createSectionsController({
 
   async function playSectionById(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
@@ -193,12 +220,12 @@ export function createSectionsController({
 
   async function playAdaptiveSection() {
     try {
-      if (!state.sections.length) {
+      if (!state.allSections.length) {
         window.alert("There are no saved sections for this profile yet.");
         return;
       }
 
-      const nextSection = chooseAdaptiveSection(state.sections);
+      const nextSection = chooseAdaptiveSection(state.allSections);
 
       if (!nextSection) {
         return;
@@ -215,7 +242,7 @@ export function createSectionsController({
       return;
     }
 
-    const activeSection = state.sections.find(
+    const activeSection = state.allSections.find(
       (section) => section.id === state.currentPlayingSectionId,
     );
 
@@ -245,7 +272,7 @@ export function createSectionsController({
   }
 
   async function finalizeSectionPlay(sectionId) {
-    const section = state.sections.find((item) => item.id === sectionId);
+    const section = state.allSections.find((item) => item.id === sectionId);
 
     if (!section) {
       return;
@@ -272,7 +299,7 @@ export function createSectionsController({
 
   async function removeSection(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
