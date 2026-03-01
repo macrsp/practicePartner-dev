@@ -127,6 +127,7 @@ The current product is organized around these major regions:
 6. Speed control
 7. Waveform display and selection interaction
 8. Saved sections list and section actions
+9. Reusable activities list and activity actions
 
 ---
 
@@ -154,35 +155,27 @@ The current product is organized around these major regions:
 * User plays the section.
 * App loops or completes playback according to settings.
 
-### 4. Build A Today Practice List
+### 4. Create A Reusable Activity
 
-* User creates or reuses named activities.
-* User adds activities to the Today practice list.
-* User can include the same activity more than once.
-* User can reorder the Today practice list by drag and drop.
+* User creates a named activity under the active profile.
+* The activity targets either a whole track, a saved section, or a freeform custom reference.
+* For track-based and section-based work, the user can create activities quickly from the current workspace context.
+* For non-library material, the user can create a named freeform activity directly.
 
-### 5. Run Practice Mode
+### 5. Use A Playable Activity In The Workspace
 
-* User opens practice mode from the Today practice list or workspace.
-* App shows one activity at a time.
-* If the activity is playable, the app loads the relevant track and playback controls.
-* If practice mode was launched from the Today practice list, the user can move to previous or next activities there.
-* Exiting practice mode returns the user to the surface that launched it.
+* User selects a playable activity from the activity list.
+* If the activity targets a whole track, the app loads that track into the workspace.
+* If the activity targets a saved section, the app loads the associated track when needed and focuses the section range in the workspace.
+* If the target cannot be resolved, the app provides clear feedback.
 
-### 6. Update A Playable Activity During Practice
-
-* User is in practice mode on a playable activity.
-* User defines or adjusts a temporary waveform selection.
-* User can update the activity target to the full track, an existing saved section on that track, or a newly saved section created from the current selection.
-* New section creation in this flow is explicit, not automatic.
-
-### 7. Adaptive Practice
+### 6. Adaptive Practice
 
 * User asks for the next section adaptively.
 * App selects a saved section based on low mastery / low recency / low play count.
 * App loads the appropriate track and plays the section there.
 
-### 8. Refresh And Resume Context
+### 7. Refresh And Resume Context
 
 * User reloads the page.
 * App restores persisted context where possible.
@@ -199,7 +192,6 @@ The most important product-level states are:
 * active profile
 * saved sections for active profile
 * reusable activities for active profile
-* today practice list for active profile
 
 ### Music Source
 
@@ -236,13 +228,13 @@ The most important product-level states are:
 * waveform selection active
 * playback position visible
 
-### Practice Surface State
+### Activity State
 
-* workspace mode
-* today practice list view
-* practice mode
-* current activity playable
-* current activity not playable
+* no activities
+* activities available
+* selected activity
+* selected activity playable in the workspace
+* selected activity not directly playable in the workspace
 
 ---
 
@@ -425,45 +417,15 @@ This section records only the requirement changes for the feature currently bein
   * Allocation: Practice planning
   * For non-library practice material, the user can create a named activity by entering a freeform reference instead of choosing an existing track or section.
 
-* **REQ-029 - Today practice list**
+* **REQ-035 - Browse reusable activities**
 
   * Allocation: Practice planning
-  * The user can assemble an ordered Today practice list from reusable activities, can include the same activity more than once, and can reorder the list by drag and drop.
+  * The user can view reusable activities for the active profile from the main workspace.
 
-* **REQ-030 - Separate practice mode**
+* **REQ-036 - Workspace activity focus**
 
-  * Allocation: Practice execution
-  * The user can open a dedicated practice mode that is separate from the main workspace screen.
-
-* **REQ-031 - Workspace and practice navigation**
-
-  * Allocation: Navigation and workflow
-  * The user can enter the Today practice list and practice mode from the main workspace, can return from practice mode to the surface that launched it, and can return from the practice surfaces back to the workspace.
-
-* **REQ-032 - Single-activity practice execution**
-
-  * Allocation: Practice execution
-  * In practice mode, the app presents one activity at a time with a focused execution UI, including previous and next navigation when practicing from the Today practice list.
-
-* **REQ-033 - Playable activity launch**
-
-  * Allocation: Practice execution
-  * When an activity targets a track or saved section, practice mode can load the relevant track and provide waveform, playback, loop, and speed controls for that activity.
-
-* **REQ-034 - Lightweight in-practice region selection**
-
-  * Allocation: Practice execution
-  * In practice mode, the user can make a temporary waveform selection for the current playable activity. That temporary selection remains non-persisted unless the user explicitly uses the activity-update flow.
-
-* **REQ-035 - Practice-mode activity target update**
-
-  * Allocation: Practice execution
-  * For a playable activity, practice mode provides a fast activity-target update flow that lets the user switch the activity to the full track, an existing saved section on that track, or a newly saved section created from the current temporary selection.
-
-* **REQ-036 - Deleted-section activity fallback**
-
-  * Allocation: User feedback and recovery
-  * If an activity targets a saved section that has been deleted, the activity falls back to the underlying track and the app clearly informs the user that the activity target changed.
+  * Allocation: Practice planning
+  * When an activity targets a whole track or a saved section, the user can use that activity to load and focus the associated track or section in the existing workspace.
 
 ### Change
 
@@ -485,17 +447,55 @@ This section records only the requirement changes for the feature currently bein
 
 ### Deferred
 
+* **REQ-029 - Today practice list**
+
+  * Allocation: Practice planning
+  * Deferred to a later slice. The first slice does not add a Today practice list.
+
+* **REQ-030 - Separate practice mode**
+
+  * Allocation: Practice execution
+  * Deferred to a later slice. The first slice does not add a separate practice mode.
+
+* **REQ-031 - Workspace and practice navigation**
+
+  * Allocation: Navigation and workflow
+  * Deferred to a later slice because the first slice stays within the workspace.
+
+* **REQ-032 - Single-activity practice execution**
+
+  * Allocation: Practice execution
+  * Deferred to a later slice. The first slice does not add one-activity-at-a-time practice execution UI.
+
+* **REQ-033 - Playable activity launch**
+
+  * Allocation: Practice execution
+  * Deferred to a later slice. Playable activities in the first slice act as workspace shortcuts rather than a separate execution mode.
+
+* **REQ-034 - Lightweight in-practice region selection**
+
+  * Allocation: Practice execution
+  * Deferred to a later slice because the first slice does not add practice mode.
+
 * practice categories as first-class user-managed entities
+
 * song sets and set-based activity targets
+
 * structured fields for non-library custom targets beyond the initial freeform reference
+
 * ratings in the first practice-mode slice
+
 * timers and timer-driven stop or notification behavior in the first practice-mode slice
+
+* saving new sections directly from a future practice mode
+
 * cumulative teacher-note backlog UX
-* named multi-day practice plans beyond the initial Today practice list
+
+* named multi-day practice plans beyond an eventual Today practice list
 
 ### Rejected
 
-* using the current main workspace screen as the practice activity execution screen
+* overloading sections so they become the universal practice activity model
 * keeping separate Mark A and Mark B buttons on the main workspace screen as the primary section-selection flow
 
 ---
@@ -506,28 +506,24 @@ Use this section to record resolved planning decisions for the current or most r
 
 ### Accepted Decisions
 
-* The current main screen is a workspace / planner surface, not the practice activity execution surface.
-* Practice execution should happen in a separate practice mode.
-* The Today practice list should be reachable from the main workspace, and the user should be able to navigate back to the workspace from the practice surfaces.
+* The current main screen remains a workspace / planner surface.
+* The first slice should stay within the existing workspace rather than introducing a Today practice list or separate practice mode.
 * Saved sections should be shown only for the currently selected track in the main workspace.
 * Activities are reusable entities and should not be treated as plan-local only.
 * Activities should be explicitly nameable in the first slice.
 * Sections remain specialized saved passages associated with tracks; they are valid activity targets but are not themselves activities.
 * Activity target types for the first slice are track, saved section, and freeform custom reference.
 * Quick-add should be favored for track-based and section-based activity creation, while freeform custom activities should still have a direct creation path.
-* Freeform is the initial approach for non-library practice material, and in the first slice it consists of an activity name plus one freeform reference.
-* The Today practice list should allow duplicate entries and drag-and-drop reordering in a single ordered lane.
-* Practice mode should include waveform-based region selection for playable activities.
-* Practice mode should provide previous and next navigation when running from the Today practice list and should return to the launching surface when exited.
-* Practice mode should allow intentional activity-target updates for playable activities, with options for the full track, existing saved sections on that track, or a newly saved section created from the current temporary selection.
-* If a section-targeted activity loses its saved section, it should fall back to the underlying track and visibly inform the user of the change.
+* Freeform is the initial approach for non-library practice material.
+* Playable activities in the first slice should function as workspace shortcuts that load or focus the relevant track or section using the existing workspace controls.
 * Waveform drag / pointer selection is the intended main workflow for setting A/B ranges in the workspace.
-* Switching tracks in the workspace should clear section focus that no longer belongs to the selected track.
 
 ### Rejected Or Deferred Directions
 
-* Overloading sections so they become the universal practice activity model was rejected.
-* Making the main workspace carry both planning UI and one-at-a-time execution UI was rejected.
+* A dedicated Today practice list was deferred to keep the first slice smaller.
+* A separate practice mode was deferred to keep the first slice smaller.
+* One-activity-at-a-time execution UI was deferred to keep the first slice smaller.
+* In-practice temporary region selection was deferred with practice mode.
 * Early introduction of song sets, categories, timers, ratings, and named plans was deferred to keep the first slice incremental.
 
 ---
@@ -546,38 +542,33 @@ Use this section to summarize the feature or problem currently under discussion.
 
 ### Problem
 
-* The current app supports track-based section work, but it does not yet support reusable practice activities, an ordered practice list, or a focused one-activity-at-a-time practice flow.
-* The current main screen is already dense and should not be expanded into the full execution UI for running a practice.
+* The current app supports track-based section work, but it does not yet support reusable practice activities.
 * The current section browse model is profile-wide, which conflicts with the desired track-centric mental model for saved sections.
 * The current main workspace still exposes playback-position A/B marker buttons even though waveform selection is the intended interaction model.
-* The first practice-mode slice also needs an efficient way to update playable activities without forcing the user back through the workspace for every refinement.
+* The broader multi-surface planning direction proved too large for the first implementation slice.
 
 ### Desired Outcome
 
 * The app should support reusable named practice activities that can point to a whole track, a saved section, or freeform non-library material.
-* The user should be able to assemble an ordered Today practice list from those activities, including duplicates, and reorder it by drag and drop.
-* The product should provide a separate practice mode for focused execution of one activity at a time, with previous and next navigation when launched from the Today practice list.
-* The main workspace should stay oriented around track selection, waveform inspection, and section management for the currently selected track.
-* For playable activities, the user should be able to intentionally retarget the activity during practice to the full track, an existing saved section, or a newly saved section created from the current temporary selection.
+* The first slice should let the user create and browse those activities in the existing workspace.
+* For playable activities, the user should be able to use an activity as a shortcut that loads or focuses the associated track or section in the existing workspace.
+* The main workspace should stay oriented around track selection, waveform inspection, section management, and activity creation / browsing for the active profile.
+* Saved sections in the workspace should be shown only for the currently selected track.
+* Playback-position Mark A / Mark B controls should be removed from the workspace in favor of waveform selection.
 
 ### Topic-Specific Constraints
 
 * The first slice should build on the existing track, waveform, and section foundation rather than replace it.
 * The first slice should stay incremental and avoid introducing too many new domains at once.
 * Non-library material should start as a freeform reference rather than a more structured schema.
-* Activity creation should be fast for track-based and section-based work, while still supporting direct creation of freeform activities.
-* Practice mode should support temporary waveform selection for playable activities, and explicit save-as-new-section behavior is in scope only through the activity-target update flow.
-* New section creation from practice mode should be intentional rather than automatic, to preserve speed without spamming near-duplicate saved sections.
+* The first slice should not add a Today practice list or a separate practice mode.
+* The first slice should not turn the workspace into a dedicated one-at-a-time activity execution surface.
 
 ### Proposed Direction
 
-* Split the product into distinct surfaces:
-
-  * workspace for track selection, waveform use, and section management
-  * Today practice list for assembling a session from activities
-  * practice mode for focused execution of one activity at a time
+* Keep the product on a single workspace surface for this slice.
 * Keep sections as track-associated saved passages.
-* Make activities the reusable planning object.
+* Make activities the reusable planning object introduced in this slice.
 * Support three activity target types in the first slice:
 
   * whole track
@@ -586,30 +577,24 @@ Use this section to summarize the feature or problem currently under discussion.
 * Show saved sections only for the currently selected track in the workspace.
 * Remove playback-position Mark A / Mark B controls from the main workspace and rely on waveform selection there.
 * Favor quick-add flows for creating activities from the current track or a selected section.
-* In practice mode, use a fast activity-target selection flow for playable activities that can choose:
-
-  * the full track
-  * an existing saved section on that track
-  * a newly saved section created from the current temporary selection
+* Let playable activities act as shortcuts that load and focus existing workspace state rather than opening a new practice surface.
 
 ### Risks / Edge Cases
 
 * A saved-section activity may reference a section that has been deleted.
-* A deleted section referenced by an activity should fall back to the underlying track with clear messaging, rather than silently disappearing.
 * A track-targeted or section-targeted activity may reference a track that is unavailable in the currently connected folder.
-* A custom activity target may have no playable media, so practice mode must handle both playable and non-playable activities cleanly.
-* Practice mode temporary selection must not be mistaken for a persisted saved section unless the user explicitly saves it through the activity-target update flow.
-* Practice mode must make the difference between selecting an existing section and creating a new one clear enough to avoid accidental near-duplicate section clutter.
-* Navigation between workspace, Today practice list, and practice mode must preserve user context clearly enough to avoid confusion.
+* A custom activity target may have no playable media, so the workspace must handle both playable and non-playable activities clearly.
+* Activity focus in the workspace must not be mistaken for a separate practice mode.
 * If no track is selected in the workspace, the section area needs clear messaging that sections are track-specific.
-* The Today practice list allows duplicates, so focus, completion, and navigation should stay clear even when adjacent entries refer to the same underlying activity.
+* The workspace needs clear distinction between saved sections and reusable activities so the two concepts do not blur.
 
 ### Requirement Impact
 
 * Unchanged baseline requirements: REQ-001 through REQ-009, REQ-011 through REQ-014, REQ-016 through REQ-025.
 * Baseline requirements proposed to change: REQ-015.
 * Baseline requirements proposed to remove: REQ-010.
-* New requirements proposed for the current feature: REQ-026 through REQ-036.
+* New requirements proposed for the current feature: REQ-026 through REQ-028, REQ-035, and REQ-036.
+* Deferred requirements from the larger earlier concept: REQ-029 through REQ-034.
 * Open requirement questions: none currently blocking the first slice.
 
 ### Definition Of Ready For Implementation
@@ -623,7 +608,7 @@ A planning topic is ready to move to implementation when:
 * the current planning delta is explicit
 * no major product-level ambiguity remains
 
-This topic is considered ready for implementation for the first slice described in this file.
+This topic is considered ready to move into implementation for the smaller first slice described in this file.
 
 ---
 
@@ -631,67 +616,58 @@ This topic is considered ready for implementation for the first slice described 
 
 ### Feature Summary
 
-* Introduce reusable named practice activities and a Today practice list, while separating the main workspace from a new focused practice mode.
+* Introduce reusable named practice activities in the existing workspace.
 * Re-scope workspace section browsing so it only shows saved sections for the currently selected track.
 * Remove playback-position Mark A / Mark B controls from the workspace and rely on waveform selection there.
-* Support duplicate Today-list entries, drag-and-drop reordering, and previous / next navigation in practice mode.
-* Allow explicit playable-activity retargeting from practice mode, including saving the current temporary selection as a new section when the user chooses to do so.
+* Let playable activities act as workspace shortcuts that load or focus the associated track or saved section using the existing workspace controls.
 
 ### Requirement Impact
 
 * Unchanged baseline requirements: REQ-001 through REQ-009, REQ-011 through REQ-014, REQ-016 through REQ-025.
 * Changed baseline requirements: REQ-015.
-* New requirements: REQ-026 through REQ-036.
+* New requirements: REQ-026 through REQ-028, REQ-035, and REQ-036.
 * Removed requirements: REQ-010.
-* Deferred or rejected items: first-class categories, song sets, structured non-library targets, timers, ratings, cumulative teacher-note backlog UX, named multi-day plans, and use of the workspace as the execution screen.
+* Deferred or rejected items: REQ-029 through REQ-034, first-class categories, song sets, structured non-library targets beyond freeform, timers, ratings, cumulative teacher-note backlog UX, and named multi-day plans.
 
 ### User-Facing Behavior
 
 * In the workspace, the user selects a track, sees that track's waveform, and manages only that track's saved sections.
 * The user creates reusable named activities that target either a whole track, a saved section, or a freeform custom reference.
-* The user assembles an ordered Today practice list from those activities, can include duplicates, and can reorder the list by drag and drop.
-* The user can open practice mode from the practice list or workspace and run one activity at a time.
-* For playable activities, practice mode loads the relevant track and exposes waveform, playback, loop, speed, and temporary region selection.
-* For playable activities, practice mode also provides a fast update flow that can point the activity to the full track, an existing saved section, or a newly saved section created from the current temporary selection.
-* The user can move previous / next through Today-list activities in practice mode and returns to the launching surface when exiting practice mode.
-* The user can navigate between workspace, Today practice list, and practice mode without those surfaces collapsing into a single overloaded screen.
+* The user can browse reusable activities for the active profile in the workspace.
+* When an activity targets a whole track or a saved section, the user can use that activity to load and focus the associated track or section in the existing workspace.
+* Freeform activities are visible reusable references but are not directly playable in this first slice.
+* The user remains in a single workspace surface rather than navigating into a Today list or separate practice mode.
 
 ### Important States And Edge Cases
 
 * no track selected in workspace
 * no saved sections for selected track
-* no playable media for a custom activity target
+* no activities for the active profile
+* non-playable freeform activity target
 * missing track for a track-targeted or section-targeted activity
-* deleted section referenced by an activity, with fallback to the underlying track and visible messaging
-* temporary practice-mode selection that should not persist unless explicitly saved through the activity-update flow
-* duplicate Today-list entries that still need clear navigation and focus behavior
-* return navigation that should preserve enough context to avoid disorientation
+* deleted section referenced by an activity
+* activity focus in the workspace that must remain distinct from any future dedicated practice mode
 
 ### Persistence / User Continuity Impact
 
 * Existing profile, folder, track, section, and play-history continuity should remain intact.
-* Activities and the Today practice list become new profile-scoped persisted planning state.
-* Practice mode should respect the current music-folder availability constraints when loading playable activity targets.
-* Activity-target updates made from practice mode should persist back to the activity, including explicit creation of a new saved section when the user chooses that path.
-* Practice mode should remember enough launch context to return the user to the correct originating surface.
+* Activities become new profile-scoped persisted planning state.
+* Activity targets should continue to respect current music-folder availability constraints when they rely on playable media.
+* Workspace continuity remains the primary continuity surface for this slice.
 
 ### Likely Implementation Touchpoints
 
-* IndexedDB schema and persistence helpers for activities and Today practice list data.
+* IndexedDB schema and persistence helpers for activities.
 * Main workspace UI and rendering changes for track-only section browsing and removal of Mark A / Mark B buttons.
-* New activity and Today practice list UI surfaces.
-* Drag-and-drop behavior for the ordered Today practice list.
-* New practice-mode UI surface and associated state transitions.
-* Playable-activity target update flow, including selection of the full track, existing sections, and explicit save-as-new-section from practice mode.
-* Existing track / waveform / section playback coordination reused for playable activities.
+* New activity list and activity creation UI in the workspace.
+* Existing track / waveform / section focus coordination reused for playable activity shortcuts.
 
 ### Notes For Implementation
 
 * Keep the first slice incremental and preserve the current section and playback foundation.
-* Do not broaden the first slice into categories, sets, timers, ratings, or named plans.
+* Do not broaden the first slice into a Today list, a separate practice mode, or one-at-a-time practice execution UI.
 * Treat freeform custom targets as the initial non-library model.
-* Keep practice mode focused; section creation from practice mode is in scope only as an explicit user-chosen path inside the activity-target update flow.
-* Make practice-mode update behavior efficient first, while keeping new saved-section creation intentional rather than automatic.
+* Keep the first slice centered on reusable activity creation, browsing, and workspace focus shortcuts.
 
 ---
 
@@ -829,7 +805,6 @@ Act as a collaborative product, UX, and technical planning partner. Optimize for
 * If the user brings future ideas into the conversation, use them only as discussion input unless the conversation explicitly promotes them into the current planning delta.
 * When a requirement changes status, update that status explicitly.
 * If a request conflicts with accepted baseline requirements, surface the conflict clearly before proposing edits.
-* If the user makes a clear planning decision in chat that changes a current, deferred, or rejected direction, treat that decision as the newest authoritative planning input for the session, surface the delta clearly, and update the cumulative plan accordingly.
 
 ### Requirement Rules
 
