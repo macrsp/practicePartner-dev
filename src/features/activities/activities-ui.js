@@ -1,8 +1,8 @@
 /**
  * @role renderer
- * @owns activity-label formatting and future activity-list presentation helpers
- * @not-owns activity persistence, routing, or Today list logic
- * @notes This file is intentionally thin until the activity UI surface is wired.
+ * @owns activity-label formatting and presentation helpers for activity UI
+ * @not-owns activity persistence, workspace state transitions, or focus behavior
+ * @notes Keep this file focused on presentation helpers for activity UI.
  */
 
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";

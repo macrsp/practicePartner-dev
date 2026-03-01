@@ -1,8 +1,8 @@
 /**
  * @role controller
  * @owns reusable-activity state refresh and CRUD orchestration
- * @not-owns Today list ordering, practice-mode execution, or DOM rendering
- * @notes This controller is scaffolded so later feature work can land without another structural move.
+ * @not-owns activity list rendering, workspace track/section focus behavior, or low-level IndexedDB helpers
+ * @notes Keep this controller focused on activity CRUD and activity-list refresh.
  */
 
 import { state } from "../../app/state.js";
