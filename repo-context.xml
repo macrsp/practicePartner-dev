@@ -48,18 +48,41 @@ The content is organized as follows:
   workflows/
     update-repo-context.yml
 src/
-  app.js
-  constants.js
-  db.js
-  music-folder-store.js
-  profiles-controller.js
-  sections-controller.js
-  selection-controller.js
-  state.js
-  tracks-controller.js
-  ui.js
-  utils.js
-  waveform.js
+  app/
+    bootstrap.js
+    router.js
+    state.js
+  features/
+    activities/
+      activities-controller.js
+      activities-ui.js
+    practice-mode/
+      practice-mode-controller.js
+      practice-mode-ui.js
+    profiles/
+      profiles-controller.js
+      profiles-ui.js
+    sections/
+      sections-controller.js
+      sections-ui.js
+      selection-controller.js
+    today-list/
+      today-list-controller.js
+      today-list-dnd.js
+      today-list-ui.js
+    tracks/
+      music-folder-store.js
+      tracks-controller.js
+      tracks-ui.js
+  persistence/
+    activity-store.js
+    db.js
+    today-list-store.js
+  shared/
+    constants.js
+    shell-ui.js
+    utils.js
+    waveform.js
 .gitignore
 index.html
 planning-context.md
@@ -71,92 +94,453 @@ styles.css
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/music-folder-store.js">
+<file path="src/app/bootstrap.js">
 /**
- * @role persistence-helper
- * @owns persistence and retrieval of remembered folder handle, folder name, and last track name
- * @not-owns folder picking, permission prompts, track enumeration, or UI updates
- * @notes Keep this module storage-focused; controllers should decide behavior.
+ * @role composition-root
+ * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
+ * @not-owns business logic for profiles, tracks, sections, activities, or persistence
+ * @notes Keep this file thin; push feature logic into dedicated modules.
  */
 
-import { SETTINGS_KEYS } from "./constants.js";
-import { getSetting, setSetting } from "./db.js";
+import { openDatabase } from "../persistence/db.js";
+import { createRouter } from "./router.js";
+import { elements } from "../shared/shell-ui.js";
+import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { createProfilesController } from "../features/profiles/profiles-controller.js";
+import { createSectionsController } from "../features/sections/sections-controller.js";
+import { createSelectionController } from "../features/sections/selection-controller.js";
+import { createTracksController } from "../features/tracks/tracks-controller.js";
+import { createWaveform } from "../shared/waveform.js";
 
-export async function getRememberedMusicFolder() {
-  const [handle, name, lastTrackName] = await Promise.all([
-    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE),
-    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME),
-    getSetting(SETTINGS_KEYS.LAST_TRACK_NAME),
-  ]);
+const audio = elements.audio;
 
-  return {
-    handle: handle ?? null,
-    name: name ?? null,
-    lastTrackName: lastTrackName ?? null,
-  };
+let selectionController;
+let sectionsController;
+let tracksController;
+
+createRouter();
+
+const waveform = createWaveform({
+  mountEl: elements.waveformMount,
+  onSelectionChange: (selection) => {
+    selectionController.handleWaveformSelectionChange(selection);
+  },
+});
+
+selectionController = createSelectionController({
+  waveform,
+  renderSectionList: () => sectionsController.renderSectionList(),
+});
+
+tracksController = createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  renderSectionList: () => sectionsController.renderSectionList(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  handleError,
+});
+
+sectionsController = createSectionsController({
+  audio,
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
+  handleError,
+});
+
+const profilesController = createProfilesController({
+  refreshSections: () => sectionsController.refreshSections(),
+  handleError,
+});
+
+bindEvents();
+bootstrap().catch(handleError);
+
+async function bootstrap() {
+  await openDatabase();
+  await profilesController.ensureDefaultProfile();
+
+  renderTracks([], null);
+  setTrackCount("No folder selected.");
+  tracksController.setSpeed(Number(elements.speed.value));
+
+  await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
+  selectionController.refreshSelectionUi();
 }
 
-export async function rememberMusicFolder(directoryHandle) {
-  await Promise.all([
-    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE, directoryHandle),
-    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME, directoryHandle?.name ?? null),
-  ]);
+function bindEvents() {
+  elements.profileSelect.addEventListener("change", async (event) => {
+    profilesController.setCurrentProfileId(Number(event.target.value));
+    await sectionsController.refreshSections();
+  });
+
+  elements.newProfile.addEventListener("click", () => {
+    void profilesController.createProfile();
+  });
+
+  elements.pickFolder.addEventListener("click", () => {
+    void tracksController.pickMusicFolder();
+  });
+
+  elements.trackSelect.addEventListener("change", (event) => {
+    const nextIndex = Number(event.target.value);
+    void tracksController.selectTrackByIndex(nextIndex);
+  });
+
+  elements.saveSection.addEventListener("click", () => {
+    void sectionsController.saveSelectionAsSection();
+  });
+
+  elements.adaptivePlay.addEventListener("click", () => {
+    void sectionsController.playAdaptiveSection();
+  });
+
+  elements.speed.addEventListener("input", (event) => {
+    tracksController.setSpeed(Number(event.target.value));
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    tracksController.syncWaveformPlaybackPosition();
+    void sectionsController.handleAudioBoundary();
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("seeked", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("pause", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("ended", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  window.addEventListener("unload", () => {
+    tracksController.releaseCurrentTrackUrl();
+  });
 }
 
-export async function rememberLastTrackName(trackName) {
-  await setSetting(SETTINGS_KEYS.LAST_TRACK_NAME, trackName ?? null);
+function handleError(error) {
+  if (!error || error.name === "AbortError") {
+    return;
+  }
+
+  console.error(error);
+  window.alert(error.message || "Something went wrong.");
 }
 </file>
 
-<file path="repomix.config.json">
-{
-  "$schema": "https://repomix.com/schemas/latest/schema.json",
-  "output": {
-    "filePath": "repo-context.xml",
-    "style": "xml",
-    "instructionFilePath": "repomix-instruction.md",
-    "fileSummary": true,
-    "directoryStructure": true,
-    "files": true,
-    "removeComments": false,
-    "removeEmptyLines": false,
-    "includeEmptyDirectories": false,
-    "git": {
-      "sortByChanges": true,
-      "includeDiffs": false,
-      "includeLogs": false
+<file path="src/app/router.js">
+/**
+ * @role route-coordinator
+ * @owns surface-level route state and route transitions between workspace, Today list, and practice mode
+ * @not-owns feature-specific rendering or persistence
+ * @notes The current implementation keeps route state lightweight until additional surfaces are wired.
+ */
+
+import { state } from "./state.js";
+
+export const ROUTES = {
+  WORKSPACE: "workspace",
+  TODAY_LIST: "today-list",
+  PRACTICE_MODE: "practice-mode",
+};
+
+const VALID_ROUTES = new Set(Object.values(ROUTES));
+
+export function createRouter({ initialRoute = ROUTES.WORKSPACE, onRouteChange } = {}) {
+  if (!VALID_ROUTES.has(initialRoute)) {
+    throw new Error(`Unknown route "${initialRoute}".`);
+  }
+
+  state.currentRoute = initialRoute;
+  state.routeContext = null;
+
+  function navigate(route, routeContext = null) {
+    if (!VALID_ROUTES.has(route)) {
+      throw new Error(`Unknown route "${route}".`);
     }
+
+    state.currentRoute = route;
+    state.routeContext = routeContext;
+    onRouteChange?.({ route, routeContext });
+  }
+
+  return {
+    navigate,
+    getCurrentRoute: () => state.currentRoute,
+    getRouteContext: () => state.routeContext,
+  };
+}
+</file>
+
+<file path="src/app/state.js">
+/**
+ * @role shared-runtime-state
+ * @owns in-memory application state shared across features
+ * @not-owns persistence, validation rules, or DOM rendering
+ * @notes Keep this as plain data; behavior belongs in controllers or helpers.
+ */
+
+export const state = {
+  currentRoute: "workspace",
+  routeContext: null,
+
+  profiles: [],
+  currentProfileId: null,
+
+  currentFolderHandle: null,
+  currentFolderName: null,
+  tracks: [],
+  currentTrack: null,
+  currentTrackUrl: null,
+
+  allSections: [],
+  sections: [],
+  selection: {
+    start: null,
+    end: null,
   },
-  "include": ["**/*"],
-  "ignore": {
-    "useGitignore": true,
-    "useDefaultPatterns": true,
-    "customPatterns": [
-      "dist",
-      "repo-context.xml"
-    ]
+  focusedSectionId: null,
+  currentPlayingSectionId: null,
+
+  activities: [],
+  todayListItems: [],
+  currentPracticeIndex: null,
+  practiceSelection: {
+    start: null,
+    end: null,
   },
-  "security": {
-    "enableSecurityCheck": true
-  },
-  "tokenCount": {
-    "encoding": "o200k_base"
+};
+</file>
+
+<file path="src/features/activities/activities-controller.js">
+/**
+ * @role controller
+ * @owns reusable-activity state refresh and CRUD orchestration
+ * @not-owns Today list ordering, practice-mode execution, or DOM rendering
+ * @notes This controller is scaffolded so later feature work can land without another structural move.
+ */
+
+import { state } from "../../app/state.js";
+import {
+  addActivity,
+  deleteActivity,
+  getActivitiesByProfile,
+  updateActivity,
+} from "../../persistence/activity-store.js";
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+
+const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
+
+export function createActivitiesController({ handleError } = {}) {
+  async function refreshActivities() {
+    if (!state.currentProfileId) {
+      state.activities = [];
+      return [];
+    }
+
+    const activities = await getActivitiesByProfile(state.currentProfileId);
+    state.activities = activities;
+    return activities;
+  }
+
+  async function createActivity(input) {
+    try {
+      validateActivityInput(input);
+
+      const activityId = await addActivity({
+        profileId: state.currentProfileId,
+        name: input.name.trim(),
+        targetType: input.targetType,
+        trackName: input.trackName ?? null,
+        sectionId: input.sectionId ?? null,
+        customReference: input.customReference?.trim() ?? null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+      return activityId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function saveActivity(activity) {
+    try {
+      validateActivityInput(activity);
+
+      await updateActivity({
+        ...activity,
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function removeActivity(activityId) {
+    try {
+      await deleteActivity(activityId);
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  return {
+    refreshActivities,
+    createActivity,
+    saveActivity,
+    removeActivity,
+  };
+}
+
+function validateActivityInput(input) {
+  if (!input?.name?.trim()) {
+    throw new Error("Activity name is required.");
+  }
+
+  if (!VALID_TARGET_TYPES.has(input.targetType)) {
+    throw new Error("Activity target type is invalid.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.TRACK && !input.trackName) {
+    throw new Error("Track activities require a track.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.SECTION && !input.sectionId) {
+    throw new Error("Section activities require a saved section.");
+  }
+
+  if (
+    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
+    !input.customReference?.trim()
+  ) {
+    throw new Error("Custom activities require a reference.");
   }
 }
 </file>
 
-<file path="src/profiles-controller.js">
+<file path="src/features/activities/activities-ui.js">
+/**
+ * @role renderer
+ * @owns activity-label formatting and future activity-list presentation helpers
+ * @not-owns activity persistence, routing, or Today list logic
+ * @notes This file is intentionally thin until the activity UI surface is wired.
+ */
+
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+
+export function getActivityTargetLabel(targetType) {
+  switch (targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return "Track";
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return "Saved section";
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return "Custom";
+    default:
+      return "Unknown";
+  }
+}
+
+export function describeActivity(activity) {
+  if (!activity) {
+    return "";
+  }
+
+  switch (activity.targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return `${activity.name} • Track: ${activity.trackName ?? "—"}`;
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return `${activity.name} • Saved section`;
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return `${activity.name} • ${activity.customReference ?? "Custom reference"}`;
+    default:
+      return activity.name ?? "";
+  }
+}
+</file>
+
+<file path="src/features/practice-mode/practice-mode-controller.js">
 /**
  * @role controller
- * @owns default-profile bootstrap, profile creation, profile refresh, profile selection state transitions
+ * @owns one-activity-at-a-time practice state and temporary in-practice selection state
+ * @not-owns activity persistence, Today-list ordering, or workspace section CRUD
+ * @notes The executable practice-mode surface is deferred; this controller provides the initial state shape.
+ */
+
+import { state } from "../../app/state.js";
+
+export function createPracticeModeController() {
+  function openPracticeIndex(index) {
+    state.currentPracticeIndex = Number.isInteger(index) ? index : null;
+    state.practiceSelection = {
+      start: null,
+      end: null,
+    };
+  }
+
+  function setPracticeSelection(selection) {
+    state.practiceSelection = {
+      start: Number.isFinite(selection?.start) ? selection.start : null,
+      end: Number.isFinite(selection?.end) ? selection.end : null,
+    };
+  }
+
+  function clearPracticeSelection() {
+    state.practiceSelection = {
+      start: null,
+      end: null,
+    };
+  }
+
+  return {
+    openPracticeIndex,
+    setPracticeSelection,
+    clearPracticeSelection,
+  };
+}
+</file>
+
+<file path="src/features/practice-mode/practice-mode-ui.js">
+/**
+ * @role renderer
+ * @owns practice-mode labeling helpers and future practice-surface rendering helpers
+ * @not-owns practice execution, routing, or activity persistence
+ * @notes This file is intentionally thin until the practice-mode surface is wired.
+ */
+
+export function getPracticeAvailabilityMessage(isPlayable) {
+  return isPlayable ? "Playable activity" : "Non-playable activity";
+}
+</file>
+
+<file path="src/features/profiles/profiles-controller.js">
+/**
+ * @role controller
+ * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
  * @not-owns section logic, track logic, or direct IndexedDB schema management
  * @notes This controller may trigger section refreshes after profile changes.
  */
 
-import { DEFAULT_PROFILE_NAME } from "./constants.js";
-import { addProfile, getAllProfiles } from "./db.js";
-import { state } from "./state.js";
-import { renderProfiles } from "./ui.js";
+import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
+import { addProfile, getAllProfiles } from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { renderProfiles } from "./profiles-ui.js";
 
 export function createProfilesController({ refreshSections, handleError }) {
   async function ensureDefaultProfile() {
@@ -218,10 +602,45 @@ export function createProfilesController({ refreshSections, handleError }) {
 }
 </file>
 
-<file path="src/sections-controller.js">
+<file path="src/features/profiles/profiles-ui.js">
+/**
+ * @role renderer
+ * @owns profile-select rendering
+ * @not-owns profile state transitions, persistence, or validation
+ * @notes Keep this file presentation-only.
+ */
+
+import { elements } from "../../shared/shell-ui.js";
+
+export function renderProfiles(profiles, currentProfileId) {
+  elements.profileSelect.innerHTML = "";
+
+  if (!profiles.length) {
+    const option = document.createElement("option");
+    option.textContent = "No profiles";
+    option.disabled = true;
+    option.selected = true;
+    elements.profileSelect.appendChild(option);
+    elements.profileSelect.disabled = true;
+    return;
+  }
+
+  profiles.forEach((profile) => {
+    const option = document.createElement("option");
+    option.value = String(profile.id);
+    option.textContent = profile.name;
+    elements.profileSelect.appendChild(option);
+  });
+
+  elements.profileSelect.disabled = false;
+  elements.profileSelect.value = String(currentProfileId);
+}
+</file>
+
+<file path="src/features/sections/sections-controller.js">
 /**
  * @role controller
- * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking
+ * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking, and track-scoped section browsing
  * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
@@ -232,16 +651,17 @@ import {
   deleteSection,
   getSectionsByProfile,
   updateSection,
-} from "./db.js";
-import { state } from "./state.js";
-import { elements, renderSections } from "./ui.js";
+} from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
 import {
   calculateMastery,
   chooseAdaptiveSection,
   createSectionLabel,
   normalizeSectionRecord,
   sortSections,
-} from "./utils.js";
+} from "../../shared/utils.js";
+import { renderSections } from "./sections-ui.js";
 
 export function createSectionsController({
   audio,
@@ -253,6 +673,7 @@ export function createSectionsController({
 }) {
   async function refreshSections() {
     if (!state.currentProfileId) {
+      state.allSections = [];
       state.sections = [];
       renderSectionList();
       refreshMasteryUi();
@@ -260,13 +681,13 @@ export function createSectionsController({
     }
 
     const sections = await getSectionsByProfile(state.currentProfileId);
-    state.sections = sections.map(normalizeSectionRecord).sort(sortSections);
+    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
 
-    if (!state.sections.some((section) => section.id === state.focusedSectionId)) {
+    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
       state.focusedSectionId = null;
     }
 
-    if (!state.sections.some((section) => section.id === state.currentPlayingSectionId)) {
+    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
       state.currentPlayingSectionId = null;
     }
 
@@ -274,10 +695,35 @@ export function createSectionsController({
     refreshMasteryUi();
   }
 
+  function getVisibleSections() {
+    const currentTrackName = state.currentTrack?.name;
+
+    if (!currentTrackName) {
+      return [];
+    }
+
+    return state.allSections.filter((section) => section.trackName === currentTrackName);
+  }
+
+  function getActiveVisibleSectionId(visibleSections) {
+    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      return state.currentPlayingSectionId;
+    }
+
+    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
+      return state.focusedSectionId;
+    }
+
+    return null;
+  }
+
   function renderSectionList() {
+    const visibleSections = getVisibleSections();
+    state.sections = visibleSections;
+
     renderSections({
-      sections: state.sections,
-      activeSectionId: state.currentPlayingSectionId ?? state.focusedSectionId,
+      sections: visibleSections,
+      activeSectionId: getActiveVisibleSectionId(visibleSections),
       currentTrackName: state.currentTrack?.name ?? null,
       onFocus: (sectionId) => {
         void focusSection(sectionId);
@@ -304,7 +750,7 @@ export function createSectionsController({
       }
 
       if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Mark both A and B before saving a section.");
+        window.alert("Drag on the waveform to mark a section before saving.");
         return;
       }
 
@@ -336,7 +782,7 @@ export function createSectionsController({
 
   async function focusSection(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
@@ -381,7 +827,7 @@ export function createSectionsController({
 
   async function playSectionById(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
@@ -414,12 +860,12 @@ export function createSectionsController({
 
   async function playAdaptiveSection() {
     try {
-      if (!state.sections.length) {
+      if (!state.allSections.length) {
         window.alert("There are no saved sections for this profile yet.");
         return;
       }
 
-      const nextSection = chooseAdaptiveSection(state.sections);
+      const nextSection = chooseAdaptiveSection(state.allSections);
 
       if (!nextSection) {
         return;
@@ -436,7 +882,7 @@ export function createSectionsController({
       return;
     }
 
-    const activeSection = state.sections.find(
+    const activeSection = state.allSections.find(
       (section) => section.id === state.currentPlayingSectionId,
     );
 
@@ -466,7 +912,7 @@ export function createSectionsController({
   }
 
   async function finalizeSectionPlay(sectionId) {
-    const section = state.sections.find((item) => item.id === sectionId);
+    const section = state.allSections.find((item) => item.id === sectionId);
 
     if (!section) {
       return;
@@ -493,7 +939,7 @@ export function createSectionsController({
 
   async function removeSection(sectionId) {
     try {
-      const section = state.sections.find((item) => item.id === sectionId);
+      const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
         return;
@@ -534,18 +980,124 @@ export function createSectionsController({
 }
 </file>
 
-<file path="src/selection-controller.js">
+<file path="src/features/sections/sections-ui.js">
+/**
+ * @role renderer
+ * @owns selection display, mastery display, section summary messaging, and saved-section list rendering
+ * @not-owns section state transitions, persistence, or playback rules
+ * @notes Keep this file presentation-only.
+ */
+
+import { elements } from "../../shared/shell-ui.js";
+import { createSectionLabel, formatTime } from "../../shared/utils.js";
+
+export function setSelectionDisplay(start, end) {
+  elements.abDisplay.textContent = `A ${formatTime(start)} • B ${formatTime(end)}`;
+}
+
+export function setMasteryDisplay(value) {
+  elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+export function renderSections({
+  sections,
+  activeSectionId,
+  currentTrackName,
+  onFocus,
+  onPlay,
+  onDelete,
+}) {
+  elements.sectionList.innerHTML = "";
+
+  if (!currentTrackName) {
+    elements.sectionSummary.textContent = "Select a track to view saved sections for that track.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a track to browse and manage its saved sections.";
+    elements.sectionList.appendChild(empty);
+    return;
+  }
+
+  elements.sectionSummary.textContent = sections.length
+    ? `Showing ${sections.length} saved section${sections.length === 1 ? "" : "s"} for ${currentTrackName}.`
+    : `No saved sections for ${currentTrackName} yet.`;
+
+  if (!sections.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Drag on the waveform to select a range, then save it as a section for this track.";
+    elements.sectionList.appendChild(empty);
+    return;
+  }
+
+  sections.forEach((section) => {
+    const row = document.createElement("div");
+    row.className = "section-row";
+    if (section.id === activeSectionId) {
+      row.classList.add("is-active");
+    }
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = createSectionLabel(section);
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent =
+      `${section.trackName} • plays ${section.playCount} • mastery ${section.mastery.toFixed(2)} • ` +
+      `last played ${section.lastPlayed ? new Date(section.lastPlayed).toLocaleString() : "never"}`;
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const playButton = document.createElement("button");
+    playButton.type = "button";
+    playButton.textContent = "Play";
+    playButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onPlay(section.id);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onDelete(section.id);
+    });
+
+    actions.appendChild(playButton);
+    actions.appendChild(deleteButton);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+    row.addEventListener("click", () => onFocus(section.id));
+
+    elements.sectionList.appendChild(row);
+  });
+}
+</file>
+
+<file path="src/features/sections/selection-controller.js">
 /**
  * @role controller
- * @owns A/B selection state, waveform selection sync, mastery display refresh, selection display refresh
+ * @owns waveform-driven selection state, mastery display refresh, and selection display refresh
  * @not-owns saved-section persistence, track loading, or profile management
  * @notes Keep this controller focused on selection semantics and related UI.
  */
 
-import { state } from "./state.js";
-import { setMasteryDisplay, setSelectionDisplay } from "./ui.js";
+import { state } from "../../app/state.js";
+import { setMasteryDisplay, setSelectionDisplay } from "./sections-ui.js";
 
-export function createSelectionController({ audio, waveform, renderSectionList }) {
+export function createSelectionController({ waveform, renderSectionList }) {
   function refreshSelectionUi() {
     waveform.setSelection(state.selection);
     setSelectionDisplay(state.selection.start, state.selection.end);
@@ -553,8 +1105,8 @@ export function createSelectionController({ audio, waveform, renderSectionList }
 
   function refreshMasteryUi() {
     const focusedSection =
-      state.sections.find((section) => section.id === state.currentPlayingSectionId) ||
-      state.sections.find((section) => section.id === state.focusedSectionId) ||
+      state.allSections.find((section) => section.id === state.currentPlayingSectionId) ||
+      state.allSections.find((section) => section.id === state.focusedSectionId) ||
       null;
 
     setMasteryDisplay(focusedSection?.mastery ?? null);
@@ -576,42 +1128,191 @@ export function createSelectionController({ audio, waveform, renderSectionList }
     clearFocusedSectionForManualSelection();
   }
 
-  function setSelectionMarker(key) {
-    if (!state.currentTrack) {
-      window.alert("Pick a track first.");
-      return;
-    }
-
-    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-    state.selection = {
-      ...state.selection,
-      [key]: currentTime,
-    };
-
-    refreshSelectionUi();
-    clearFocusedSectionForManualSelection();
-  }
-
   return {
     refreshSelectionUi,
     refreshMasteryUi,
     handleWaveformSelectionChange,
-    setSelectionMarker,
   };
 }
 </file>
 
-<file path="src/tracks-controller.js">
+<file path="src/features/today-list/today-list-controller.js">
 /**
  * @role controller
- * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, waveform playback sync
+ * @owns Today practice list refresh, add/remove behavior, and ordered item persistence
+ * @not-owns activity CRUD, practice execution, or DOM rendering
+ * @notes This controller is scaffolded so Today-list work can land incrementally.
+ */
+
+import { state } from "../../app/state.js";
+import {
+  addTodayListItem,
+  deleteTodayListItem,
+  getTodayListByProfile,
+  updateTodayListItem,
+} from "../../persistence/today-list-store.js";
+
+export function createTodayListController({ handleError } = {}) {
+  async function refreshTodayList() {
+    if (!state.currentProfileId) {
+      state.todayListItems = [];
+      return [];
+    }
+
+    const items = await getTodayListByProfile(state.currentProfileId);
+    state.todayListItems = items;
+    return items;
+  }
+
+  async function addActivityToTodayList(activityId) {
+    try {
+      const nextOrder =
+        state.todayListItems.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1) + 1;
+
+      const itemId = await addTodayListItem({
+        profileId: state.currentProfileId,
+        activityId,
+        sortOrder: nextOrder,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await refreshTodayList();
+      return itemId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function removeTodayListItem(itemId) {
+    try {
+      await deleteTodayListItem(itemId);
+      await refreshTodayList();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function moveTodayListItem(itemId, targetIndex) {
+    try {
+      const items = [...state.todayListItems];
+      const currentIndex = items.findIndex((item) => item.id === itemId);
+
+      if (currentIndex === -1 || targetIndex < 0 || targetIndex >= items.length) {
+        return;
+      }
+
+      const [moved] = items.splice(currentIndex, 1);
+      items.splice(targetIndex, 0, moved);
+
+      await Promise.all(
+        items.map((item, index) =>
+          updateTodayListItem({
+            ...item,
+            sortOrder: index,
+            updatedAt: Date.now(),
+          }),
+        ),
+      );
+
+      await refreshTodayList();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  return {
+    refreshTodayList,
+    addActivityToTodayList,
+    removeTodayListItem,
+    moveTodayListItem,
+  };
+}
+</file>
+
+<file path="src/features/today-list/today-list-dnd.js">
+/**
+ * @role interaction-helper
+ * @owns Today-list drag-and-drop wiring
+ * @not-owns Today-list persistence, validation, or presentation markup
+ * @notes This is a placeholder adapter until the Today-list UI surface is present.
+ */
+
+export function createTodayListDnd() {
+  return {
+    destroy() {},
+  };
+}
+</file>
+
+<file path="src/features/today-list/today-list-ui.js">
+/**
+ * @role renderer
+ * @owns Today-list labeling helpers and future list rendering helpers
+ * @not-owns ordering behavior, persistence, or practice execution
+ * @notes This file is intentionally thin until the Today-list surface is wired.
+ */
+
+export function describeTodayListItem(item, activityName = "Unknown activity") {
+  if (!item) {
+    return "";
+  }
+
+  const order = Number.isFinite(item.sortOrder) ? item.sortOrder + 1 : "—";
+  return `${order}. ${activityName}`;
+}
+</file>
+
+<file path="src/features/tracks/music-folder-store.js">
+/**
+ * @role persistence-helper
+ * @owns persistence and retrieval of remembered folder handle, folder name, and last track name
+ * @not-owns folder picking, permission prompts, track enumeration, or UI updates
+ * @notes Keep this module storage-focused; controllers should decide behavior.
+ */
+
+import { SETTINGS_KEYS } from "../../shared/constants.js";
+import { getSetting, setSetting } from "../../persistence/db.js";
+
+export async function getRememberedMusicFolder() {
+  const [handle, name, lastTrackName] = await Promise.all([
+    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE),
+    getSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME),
+    getSetting(SETTINGS_KEYS.LAST_TRACK_NAME),
+  ]);
+
+  return {
+    handle: handle ?? null,
+    name: name ?? null,
+    lastTrackName: lastTrackName ?? null,
+  };
+}
+
+export async function rememberMusicFolder(directoryHandle) {
+  await Promise.all([
+    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_HANDLE, directoryHandle),
+    setSetting(SETTINGS_KEYS.MUSIC_FOLDER_NAME, directoryHandle?.name ?? null),
+  ]);
+}
+
+export async function rememberLastTrackName(trackName) {
+  await setSetting(SETTINGS_KEYS.LAST_TRACK_NAME, trackName ?? null);
+}
+</file>
+
+<file path="src/features/tracks/tracks-controller.js">
+/**
+ * @role controller
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
  * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
-import { state } from "./state.js";
-import { elements, renderTracks, setSpeedDisplay, setTrackCount } from "./ui.js";
-import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "./utils.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
+import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
+import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
 import {
   getRememberedMusicFolder,
   rememberLastTrackName,
@@ -859,60 +1560,15 @@ export function createTracksController({
 }
 </file>
 
-<file path="src/ui.js">
+<file path="src/features/tracks/tracks-ui.js">
 /**
  * @role renderer
- * @owns DOM element lookup and rendering of profiles, tracks, section lists, and simple status displays
- * @not-owns application state transitions, persistence, or playback rules
+ * @owns track-select rendering, track-count messaging, and speed display rendering
+ * @not-owns track loading, folder permissions, or playback behavior
  * @notes Keep this file presentation-only.
  */
 
-import { createSectionLabel, formatTime } from "./utils.js";
-
-export const elements = {
-  profileSelect: document.getElementById("profileSelect"),
-  newProfile: document.getElementById("newProfile"),
-  pickFolder: document.getElementById("pickFolder"),
-  trackCount: document.getElementById("trackCount"),
-  trackSelect: document.getElementById("trackSelect"),
-  markA: document.getElementById("markA"),
-  markB: document.getElementById("markB"),
-  saveSection: document.getElementById("saveSection"),
-  adaptivePlay: document.getElementById("adaptivePlay"),
-  loopToggle: document.getElementById("loopToggle"),
-  speed: document.getElementById("speed"),
-  speedVal: document.getElementById("speedVal"),
-  masteryDisplay: document.getElementById("masteryDisplay"),
-  abDisplay: document.getElementById("abDisplay"),
-  sectionSummary: document.getElementById("sectionSummary"),
-  sectionList: document.getElementById("sectionList"),
-  waveformMount: document.getElementById("waveformMount"),
-  audio: document.getElementById("audio"),
-};
-
-export function renderProfiles(profiles, currentProfileId) {
-  elements.profileSelect.innerHTML = "";
-
-  if (!profiles.length) {
-    const option = document.createElement("option");
-    option.textContent = "No profiles";
-    option.disabled = true;
-    option.selected = true;
-    elements.profileSelect.appendChild(option);
-    elements.profileSelect.disabled = true;
-    return;
-  }
-
-  profiles.forEach((profile) => {
-    const option = document.createElement("option");
-    option.value = String(profile.id);
-    option.textContent = profile.name;
-    elements.profileSelect.appendChild(option);
-  });
-
-  elements.profileSelect.disabled = false;
-  elements.profileSelect.value = String(currentProfileId);
-}
+import { elements } from "../../shared/shell-ui.js";
 
 export function renderTracks(tracks, currentTrackName) {
   elements.trackSelect.innerHTML = "";
@@ -944,97 +1600,516 @@ export function setTrackCount(text) {
   elements.trackCount.textContent = text;
 }
 
-export function setSelectionDisplay(start, end) {
-  elements.abDisplay.textContent = `A ${formatTime(start)} • B ${formatTime(end)}`;
-}
-
 export function setSpeedDisplay(value) {
   elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
 }
+</file>
 
-export function setMasteryDisplay(value) {
-  elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
-}
+<file path="src/persistence/activity-store.js">
+/**
+ * @role persistence-layer
+ * @owns IndexedDB opening, upgrades, transactions, and shared store helpers
+ * @not-owns business rules, UI updates, or controller orchestration
+ * @notes Preserve compatibility with existing user data whenever possible.
+ */
 
-export function renderSections({
-  sections,
-  activeSectionId,
-  currentTrackName,
-  onFocus,
-  onPlay,
-  onDelete,
-}) {
-  elements.sectionList.innerHTML = "";
+import { DB_NAME, DB_VERSION, STORES } from "../shared/constants.js";
 
-  const currentTrackText = currentTrackName ? ` Current track: ${currentTrackName}.` : "";
-  elements.sectionSummary.textContent = sections.length
-    ? `Showing ${sections.length} saved section${sections.length === 1 ? "" : "s"} in this profile.${currentTrackText}`
-    : `No saved sections in this profile.${currentTrackText}`;
+let dbPromise = null;
 
-  if (!sections.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Save a section after marking A and B, then it will appear here.";
-    elements.sectionList.appendChild(empty);
-    return;
+export function openDatabase() {
+  if (dbPromise) {
+    return dbPromise;
   }
 
-  sections.forEach((section) => {
-    const row = document.createElement("div");
-    row.className = "section-row";
-    if (section.id === activeSectionId) {
-      row.classList.add("is-active");
-    }
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    const main = document.createElement("div");
-    main.className = "section-main";
+    request.onupgradeneeded = (event) => {
+      const database = event.target.result;
+      const transaction = event.target.transaction;
 
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = createSectionLabel(section);
+      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
+        ? transaction.objectStore(STORES.PROFILES)
+        : database.createObjectStore(STORES.PROFILES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent =
-      `${section.trackName} • plays ${section.playCount} • mastery ${section.mastery.toFixed(2)} • ` +
-      `last played ${section.lastPlayed ? new Date(section.lastPlayed).toLocaleString() : "never"}`;
+      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
+        ? transaction.objectStore(STORES.SECTIONS)
+        : database.createObjectStore(STORES.SECTIONS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
-    main.appendChild(title);
-    main.appendChild(meta);
+      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
+        ? transaction.objectStore(STORES.PLAYS)
+        : database.createObjectStore(STORES.PLAYS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
+      const settingsStore = database.objectStoreNames.contains(STORES.SETTINGS)
+        ? transaction.objectStore(STORES.SETTINGS)
+        : database.createObjectStore(STORES.SETTINGS, {
+            keyPath: "key",
+          });
 
-    const playButton = document.createElement("button");
-    playButton.type = "button";
-    playButton.textContent = "Play";
-    playButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onPlay(section.id);
-    });
+      const activitiesStore = database.objectStoreNames.contains(STORES.ACTIVITIES)
+        ? transaction.objectStore(STORES.ACTIVITIES)
+        : database.createObjectStore(STORES.ACTIVITIES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "danger";
-    deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onDelete(section.id);
-    });
+      const todayListStore = database.objectStoreNames.contains(STORES.TODAY_LIST)
+        ? transaction.objectStore(STORES.TODAY_LIST)
+        : database.createObjectStore(STORES.TODAY_LIST, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
 
-    actions.appendChild(playButton);
-    actions.appendChild(deleteButton);
+      if (!profilesStore.indexNames.contains("byName")) {
+        profilesStore.createIndex("byName", "name", { unique: false });
+      }
 
-    row.appendChild(main);
-    row.appendChild(actions);
-    row.addEventListener("click", () => onFocus(section.id));
+      if (!sectionsStore.indexNames.contains("byProfileId")) {
+        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
 
-    elements.sectionList.appendChild(row);
+      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
+        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
+          unique: false,
+        });
+      }
+
+      if (!playsStore.indexNames.contains("bySectionId")) {
+        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileId")) {
+        activitiesStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileAndTargetType")) {
+        activitiesStore.createIndex("byProfileAndTargetType", ["profileId", "targetType"], {
+          unique: false,
+        });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileId")) {
+        todayListStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileAndOrder")) {
+        todayListStore.createIndex("byProfileAndOrder", ["profileId", "sortOrder"], {
+          unique: false,
+        });
+      }
+
+      void settingsStore;
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
   });
+
+  return dbPromise;
+}
+
+export function runRequest(storeName, mode, action) {
+  return openDatabase().then(
+    (database) =>
+      new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        let request;
+        let result;
+
+        try {
+          request = action(store);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        if (request) {
+          request.onsuccess = () => {
+            result = request.result;
+          };
+          request.onerror = () => reject(request.error);
+        }
+
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
+        transaction.onabort = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
+      }),
+  );
+}
+
+export function getAllProfiles() {
+  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
+}
+
+export function addProfile(profile) {
+  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
+}
+
+export function getSectionsByProfile(profileId) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  );
+}
+
+export function getSectionsByProfileAndTrack(profileId, trackName) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileAndTrack").getAll(IDBKeyRange.only([profileId, trackName])),
+  );
+}
+
+export function addSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
+}
+
+export function updateSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
+}
+
+export function deleteSection(sectionId) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
+}
+
+export function addPlayLog(play) {
+  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
 }
 </file>
 
-<file path="src/utils.js">
+<file path="src/persistence/db.js">
+/**
+ * @role persistence-layer
+ * @owns IndexedDB opening, upgrades, transactions, and shared store helpers
+ * @not-owns business rules, UI updates, or controller orchestration
+ * @notes Preserve compatibility with existing user data whenever possible.
+ */
+
+import { DB_NAME, DB_VERSION, STORES } from "../shared/constants.js";
+
+let dbPromise = null;
+
+export function openDatabase() {
+  if (dbPromise) {
+    return dbPromise;
+  }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const database = event.target.result;
+      const transaction = event.target.transaction;
+
+      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
+        ? transaction.objectStore(STORES.PROFILES)
+        : database.createObjectStore(STORES.PROFILES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
+        ? transaction.objectStore(STORES.SECTIONS)
+        : database.createObjectStore(STORES.SECTIONS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
+        ? transaction.objectStore(STORES.PLAYS)
+        : database.createObjectStore(STORES.PLAYS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const settingsStore = database.objectStoreNames.contains(STORES.SETTINGS)
+        ? transaction.objectStore(STORES.SETTINGS)
+        : database.createObjectStore(STORES.SETTINGS, {
+            keyPath: "key",
+          });
+
+      const activitiesStore = database.objectStoreNames.contains(STORES.ACTIVITIES)
+        ? transaction.objectStore(STORES.ACTIVITIES)
+        : database.createObjectStore(STORES.ACTIVITIES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const todayListStore = database.objectStoreNames.contains(STORES.TODAY_LIST)
+        ? transaction.objectStore(STORES.TODAY_LIST)
+        : database.createObjectStore(STORES.TODAY_LIST, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      if (!profilesStore.indexNames.contains("byName")) {
+        profilesStore.createIndex("byName", "name", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileId")) {
+        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
+        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
+          unique: false,
+        });
+      }
+
+      if (!playsStore.indexNames.contains("bySectionId")) {
+        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileId")) {
+        activitiesStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileAndTargetType")) {
+        activitiesStore.createIndex("byProfileAndTargetType", ["profileId", "targetType"], {
+          unique: false,
+        });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileId")) {
+        todayListStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!todayListStore.indexNames.contains("byProfileAndOrder")) {
+        todayListStore.createIndex("byProfileAndOrder", ["profileId", "sortOrder"], {
+          unique: false,
+        });
+      }
+
+      void settingsStore;
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  return dbPromise;
+}
+
+export function runRequest(storeName, mode, action) {
+  return openDatabase().then(
+    (database) =>
+      new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        let request;
+        let result;
+
+        try {
+          request = action(store);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        if (request) {
+          request.onsuccess = () => {
+            result = request.result;
+          };
+          request.onerror = () => reject(request.error);
+        }
+
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
+        transaction.onabort = () =>
+          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
+      }),
+  );
+}
+
+export function getAllProfiles() {
+  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
+}
+
+export function addProfile(profile) {
+  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
+}
+
+export function getSectionsByProfile(profileId) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  );
+}
+
+export function getSectionsByProfileAndTrack(profileId, trackName) {
+  return runRequest(STORES.SECTIONS, "readonly", (store) =>
+    store.index("byProfileAndTrack").getAll(IDBKeyRange.only([profileId, trackName])),
+  );
+}
+
+export function addSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
+}
+
+export function updateSection(section) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
+}
+
+export function deleteSection(sectionId) {
+  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
+}
+
+export function addPlayLog(play) {
+  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
+}
+
+export function getSetting(key) {
+  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
+    (record) => record?.value,
+  );
+}
+
+export function setSetting(key, value) {
+  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
+}
+</file>
+
+<file path="src/persistence/today-list-store.js">
+/**
+ * @role persistence-helper
+ * @owns Today-list-specific IndexedDB access
+ * @not-owns Today-list validation, drag-and-drop behavior, or practice execution
+ * @notes Keep this module storage-focused; controllers should decide behavior.
+ */
+
+import { STORES } from "../shared/constants.js";
+import { runRequest } from "./db.js";
+
+export function getTodayListByProfile(profileId) {
+  return runRequest(STORES.TODAY_LIST, "readonly", (store) =>
+    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
+  ).then((items) =>
+    [...items].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id),
+  );
+}
+
+export function addTodayListItem(item) {
+  return runRequest(STORES.TODAY_LIST, "readwrite", (store) => store.add(item));
+}
+
+export function updateTodayListItem(item) {
+  return runRequest(STORES.TODAY_LIST, "readwrite", (store) => store.put(item));
+}
+
+export function deleteTodayListItem(itemId) {
+  return runRequest(STORES.TODAY_LIST, "readwrite", (store) => store.delete(itemId));
+}
+</file>
+
+<file path="src/shared/constants.js">
+/**
+ * @role shared-constants
+ * @owns database names, schema versions, store names, settings keys, and shared feature constants
+ * @not-owns runtime state, persistence behavior, or UI logic
+ * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
+ */
+
+export const DB_NAME = "suzukiDB_v4";
+export const DB_VERSION = 4;
+
+export const STORES = {
+  PROFILES: "profiles",
+  SECTIONS: "sections",
+  PLAYS: "plays",
+  SETTINGS: "settings",
+  ACTIVITIES: "activities",
+  TODAY_LIST: "todayList",
+};
+
+export const SETTINGS_KEYS = {
+  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
+  MUSIC_FOLDER_NAME: "musicFolderName",
+  LAST_TRACK_NAME: "lastTrackName",
+};
+
+export const DEFAULT_PROFILE_NAME = "Default";
+
+export const SUPPORTED_AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+];
+
+export const ACTIVITY_TARGET_TYPES = {
+  TRACK: "track",
+  SECTION: "section",
+  CUSTOM: "custom",
+};
+</file>
+
+<file path="src/shared/shell-ui.js">
+/**
+ * @role renderer-support
+ * @owns DOM element lookup shared across feature renderers and bootstrap wiring
+ * @not-owns feature rendering logic, application state transitions, or persistence
+ * @notes Keep this file limited to shell-level element access.
+ */
+
+function getElement(id) {
+  const element = document.getElementById(id);
+
+  if (!element) {
+    throw new Error(`Missing required element: #${id}`);
+  }
+
+  return element;
+}
+
+export const elements = {
+  profileSelect: getElement("profileSelect"),
+  newProfile: getElement("newProfile"),
+
+  pickFolder: getElement("pickFolder"),
+  trackCount: getElement("trackCount"),
+  trackSelect: getElement("trackSelect"),
+
+  saveSection: getElement("saveSection"),
+  adaptivePlay: getElement("adaptivePlay"),
+  loopToggle: getElement("loopToggle"),
+
+  speed: getElement("speed"),
+  speedVal: getElement("speedVal"),
+
+  masteryDisplay: getElement("masteryDisplay"),
+  abDisplay: getElement("abDisplay"),
+
+  sectionSummary: getElement("sectionSummary"),
+  sectionList: getElement("sectionList"),
+
+  waveformMount: getElement("waveformMount"),
+  audio: getElement("audio"),
+};
+</file>
+
+<file path="src/shared/utils.js">
 /**
  * @role utility-module
  * @owns pure helpers for formatting, sorting, normalization, clamping, and adaptive-choice logic
@@ -1132,572 +2207,10 @@ export function chooseAdaptiveSection(sections) {
 }
 </file>
 
-<file path=".gitignore">
-# @role ignore-rules
-# @owns repository-local ignore patterns for generated files and machine-specific clutter
-# @not-owns build config, workflow behavior, or architecture guidance
-# @notes Keep this file limited to ignore behavior and concise comments.
-
-dist/
-.DS_Store
-</file>
-
-<file path="styles.css">
-/*
- * @role stylesheet
- * @owns presentation, layout, spacing, colors, responsive behavior, and component states
- * @not-owns markup structure or runtime behavior
- * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
- */
-
-:root {
-  --bg: #f4f6f8;
-  --card: #ffffff;
-  --card-alt: #f8fafc;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --secondary: #e5e7eb;
-  --danger: #ef4444;
-  --danger-dark: #dc2626;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
-  --radius: 14px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  padding: 24px;
-  background: var(--bg);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--text);
-}
-
-.container {
-  max-width: 1040px;
-  margin: 0 auto;
-}
-
-.page-header {
-  margin-bottom: 20px;
-}
-
-h1 {
-  font-size: 24px;
-  margin: 0 0 6px;
-  font-weight: 700;
-}
-
-h2 {
-  font-size: 18px;
-  margin: 0;
-  font-weight: 650;
-}
-
-.card {
-  background: var(--card);
-  padding: 20px;
-  border-radius: var(--radius);
-  margin-bottom: 20px;
-  box-shadow: var(--shadow);
-}
-
-.row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.row:last-child {
-  margin-bottom: 0;
-}
-
-label {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-select,
-input[type="range"] {
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  background: #fff;
-}
-
-select {
-  min-width: 220px;
-  max-width: 100%;
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-button:hover {
-  background: var(--primary-dark);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-button.secondary {
-  background: var(--secondary);
-  color: var(--text);
-}
-
-button.secondary:hover {
-  background: #d1d5db;
-}
-
-button.danger {
-  background: var(--danger);
-  color: #fff;
-}
-
-button.danger:hover {
-  background: var(--danger-dark);
-}
-
-button:disabled,
-select:disabled,
-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-}
-
-.waveform-wrap {
-  width: 100%;
-  margin-top: 12px;
-  margin-bottom: 12px;
-}
-
-.waveform-canvas {
-  width: 100%;
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-audio {
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 12px;
-}
-
-.mastery-pill {
-  background: #e0f2fe;
-  color: #0369a1;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.section-list {
-  display: grid;
-  gap: 12px;
-}
-
-.section-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  cursor: pointer;
-}
-
-.section-row:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.section-row.is-active {
-  border-color: var(--primary);
-  background: #dbeafe;
-}
-
-.section-main {
-  min-width: 0;
-}
-
-.section-title {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.section-meta {
-  color: var(--muted);
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.empty-state {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 18px;
-  color: var(--muted);
-  background: var(--card-alt);
-}
-
-.small {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-@media (max-width: 720px) {
-  body {
-    padding: 16px;
-  }
-
-  .section-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-actions {
-    justify-content: flex-start;
-  }
-
-  select {
-    min-width: 0;
-    width: 100%;
-  }
-}
-</file>
-
-<file path="src/constants.js">
-/**
- * @role shared-constants
- * @owns database names, schema versions, store names, settings keys, default constants
- * @not-owns runtime state, persistence behavior, or UI logic
- * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
- */
-
-export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 3;
-
-export const STORES = {
-  PROFILES: "profiles",
-  SECTIONS: "sections",
-  PLAYS: "plays",
-  SETTINGS: "settings",
-};
-
-export const SETTINGS_KEYS = {
-  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
-  MUSIC_FOLDER_NAME: "musicFolderName",
-  LAST_TRACK_NAME: "lastTrackName",
-};
-
-export const DEFAULT_PROFILE_NAME = "Default";
-
-export const SUPPORTED_AUDIO_EXTENSIONS = [
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".flac",
-];
-</file>
-
-<file path="src/db.js">
-/**
- * @role persistence-layer
- * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
- * @not-owns business rules, UI updates, or controller orchestration
- * @notes Preserve compatibility with existing user data whenever possible.
- */
-
-import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
-
-let dbPromise = null;
-
-export function openDatabase() {
-  if (dbPromise) {
-    return dbPromise;
-  }
-
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result;
-      const transaction = event.target.transaction;
-
-      const profilesStore = database.objectStoreNames.contains(STORES.PROFILES)
-        ? transaction.objectStore(STORES.PROFILES)
-        : database.createObjectStore(STORES.PROFILES, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      const sectionsStore = database.objectStoreNames.contains(STORES.SECTIONS)
-        ? transaction.objectStore(STORES.SECTIONS)
-        : database.createObjectStore(STORES.SECTIONS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      const playsStore = database.objectStoreNames.contains(STORES.PLAYS)
-        ? transaction.objectStore(STORES.PLAYS)
-        : database.createObjectStore(STORES.PLAYS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
-        database.createObjectStore(STORES.SETTINGS, {
-          keyPath: "key",
-        });
-      }
-
-      if (!profilesStore.indexNames.contains("byName")) {
-        profilesStore.createIndex("byName", "name", { unique: false });
-      }
-
-      if (!sectionsStore.indexNames.contains("byProfileId")) {
-        sectionsStore.createIndex("byProfileId", "profileId", { unique: false });
-      }
-
-      if (!sectionsStore.indexNames.contains("byProfileAndTrack")) {
-        sectionsStore.createIndex("byProfileAndTrack", ["profileId", "trackName"], {
-          unique: false,
-        });
-      }
-
-      if (!playsStore.indexNames.contains("bySectionId")) {
-        playsStore.createIndex("bySectionId", "sectionId", { unique: false });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-  return dbPromise;
-}
-
-function runRequest(storeName, mode, action) {
-  return openDatabase().then(
-    (database) =>
-      new Promise((resolve, reject) => {
-        const transaction = database.transaction(storeName, mode);
-        const store = transaction.objectStore(storeName);
-        let request;
-        let result;
-
-        try {
-          request = action(store);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-
-        if (request) {
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          request.onerror = () => reject(request.error);
-        }
-
-        transaction.oncomplete = () => resolve(result);
-        transaction.onerror = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction failed."));
-        transaction.onabort = () =>
-          reject(transaction.error || request?.error || new Error("IndexedDB transaction aborted."));
-      }),
-  );
-}
-
-export function getAllProfiles() {
-  return runRequest(STORES.PROFILES, "readonly", (store) => store.getAll());
-}
-
-export function addProfile(profile) {
-  return runRequest(STORES.PROFILES, "readwrite", (store) => store.add(profile));
-}
-
-export function getSectionsByProfile(profileId) {
-  return runRequest(STORES.SECTIONS, "readonly", (store) =>
-    store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
-  );
-}
-
-export function addSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.add(section));
-}
-
-export function updateSection(section) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.put(section));
-}
-
-export function deleteSection(sectionId) {
-  return runRequest(STORES.SECTIONS, "readwrite", (store) => store.delete(sectionId));
-}
-
-export function addPlayLog(play) {
-  return runRequest(STORES.PLAYS, "readwrite", (store) => store.add(play));
-}
-
-export function getSetting(key) {
-  return runRequest(STORES.SETTINGS, "readonly", (store) => store.get(key)).then(
-    (record) => record?.value,
-  );
-}
-
-export function setSetting(key, value) {
-  return runRequest(STORES.SETTINGS, "readwrite", (store) => store.put({ key, value }));
-}
-</file>
-
-<file path="src/state.js">
-/**
- * @role shared-runtime-state
- * @owns in-memory application state shared across controllers
- * @not-owns persistence, validation rules, or UI rendering
- * @notes Keep this as plain data; behavior belongs in controllers or helpers.
- */
-
-export const state = {
-  profiles: [],
-  currentProfileId: null,
-  currentFolderHandle: null,
-  currentFolderName: null,
-  tracks: [],
-  currentTrack: null,
-  currentTrackUrl: null,
-  sections: [],
-  selection: {
-    start: null,
-    end: null,
-  },
-  focusedSectionId: null,
-  currentPlayingSectionId: null,
-};
-</file>
-
-<file path=".github/workflows/update-repo-context.yml">
-# @role workflow
-# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
-# @not-owns application runtime behavior or repository architecture rules
-# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
-
-name: Update Repo Context
-
-on:
-  push:
-    branches-ignore:
-      - main
-    paths-ignore:
-      - repo-context.xml
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: update-repo-context-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Generate repo context
-        run: npx --yes repomix@1.11.1 --config repomix.config.json
-
-      - name: Compute safe artifact name
-        shell: bash
-        run: |
-          raw_ref="${GITHUB_REF_NAME}"
-          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
-
-          if [ -z "$safe_ref" ]; then
-            safe_ref="unnamed-ref"
-          fi
-
-          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
-
-      - name: Upload repo context artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: repo-context-${{ env.safe_ref }}
-          path: repo-context.xml
-
-      - name: Commit updated repo context to branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repo-context.xml
-
-          if git diff --cached --quiet; then
-            echo "No repo context changes."
-            exit 0
-          fi
-
-          git commit -m "chore: refresh repo context"
-          git push origin HEAD:${GITHUB_REF_NAME}
-</file>
-
-<file path="src/waveform.js">
+<file path="src/shared/waveform.js">
 /**
  * @role renderer
- * @owns waveform decoding, peak caching, canvas rendering, drag selection, playback-position visualization
+ * @owns waveform decoding, peak caching, canvas rendering, drag selection, and playback-position visualization
  * @not-owns audio playback control, persistence, or section business rules
  * @notes Keep redraws efficient; cache derived waveform data when possible.
  */
@@ -2033,6 +2546,393 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     getSelection: () => ({ ...getNormalizedSelection() }),
   };
 }
+</file>
+
+<file path="repomix.config.json">
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repo-context.xml",
+    "style": "xml",
+    "instructionFilePath": "repomix-instruction.md",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "includeEmptyDirectories": false,
+    "git": {
+      "sortByChanges": true,
+      "includeDiffs": false,
+      "includeLogs": false
+    }
+  },
+  "include": ["**/*"],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "dist",
+      "repo-context.xml"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
+</file>
+
+<file path=".gitignore">
+# @role ignore-rules
+# @owns repository-local ignore patterns for generated files and machine-specific clutter
+# @not-owns build config, workflow behavior, or architecture guidance
+# @notes Keep this file limited to ignore behavior and concise comments.
+
+dist/
+.DS_Store
+</file>
+
+<file path="styles.css">
+/*
+ * @role stylesheet
+ * @owns presentation, layout, spacing, colors, responsive behavior, and component states
+ * @not-owns markup structure or runtime behavior
+ * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --card-alt: #f8fafc;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #e5e7eb;
+  --danger: #ef4444;
+  --danger-dark: #dc2626;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+.container {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 650;
+}
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.waveform-wrap {
+  width: 100%;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.waveform-canvas {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+audio {
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 12px;
+}
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-list {
+  display: grid;
+  gap: 12px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  cursor: pointer;
+}
+
+.section-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.section-row.is-active {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
+.section-main {
+  min-width: 0;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 16px;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+}
+</file>
+
+<file path=".github/workflows/update-repo-context.yml">
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
+
+name: Update Repo Context
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths-ignore:
+      - repo-context.xml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-repo-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate repo context
+        run: npx --yes repomix@1.11.1 --config repomix.config.json
+
+      - name: Compute safe artifact name
+        shell: bash
+        run: |
+          raw_ref="${GITHUB_REF_NAME}"
+          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+
+          if [ -z "$safe_ref" ]; then
+            safe_ref="unnamed-ref"
+          fi
+
+          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+
+      - name: Upload repo context artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-context-${{ env.safe_ref }}
+          path: repo-context.xml
+
+      - name: Commit updated repo context to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo-context.xml
+
+          if git diff --cached --quiet; then
+            echo "No repo context changes."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh repo context"
+          git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
 <file path="planning-context.md">
@@ -2886,155 +3786,6 @@ Stay in planning mode until most of the following are true:
 Once those conditions are substantially satisfied, summarize the implementation handoff and only then move into code-editing mode if requested.
 </file>
 
-<file path="src/app.js">
-/**
- * @role composition-root
- * @owns app bootstrap, controller composition, DOM event wiring, global error handling
- * @not-owns business logic for profiles, tracks, sections, selection, or persistence
- * @notes Keep this file thin; push feature logic into dedicated modules.
- */
-
-import { openDatabase } from "./db.js";
-import { elements, renderTracks, setTrackCount } from "./ui.js";
-import { createProfilesController } from "./profiles-controller.js";
-import { createSectionsController } from "./sections-controller.js";
-import { createSelectionController } from "./selection-controller.js";
-import { createTracksController } from "./tracks-controller.js";
-import { createWaveform } from "./waveform.js";
-
-const audio = elements.audio;
-
-let selectionController;
-let sectionsController;
-let tracksController;
-
-const waveform = createWaveform({
-  mountEl: elements.waveformMount,
-  onSelectionChange: (selection) => {
-    selectionController.handleWaveformSelectionChange(selection);
-  },
-});
-
-selectionController = createSelectionController({
-  audio,
-  waveform,
-  renderSectionList: () => sectionsController.renderSectionList(),
-});
-
-tracksController = createTracksController({
-  audio,
-  waveform,
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  renderSectionList: () => sectionsController.renderSectionList(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  handleError,
-});
-
-sectionsController = createSectionsController({
-  audio,
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
-  handleError,
-});
-
-const profilesController = createProfilesController({
-  refreshSections: () => sectionsController.refreshSections(),
-  handleError,
-});
-
-bindEvents();
-bootstrap().catch(handleError);
-
-async function bootstrap() {
-  await openDatabase();
-  await profilesController.ensureDefaultProfile();
-
-  renderTracks([], null);
-  setTrackCount("No folder selected.");
-  tracksController.setSpeed(Number(elements.speed.value));
-
-  await profilesController.refreshProfiles();
-  await tracksController.restoreRememberedFolder();
-  selectionController.refreshSelectionUi();
-}
-
-function bindEvents() {
-  elements.profileSelect.addEventListener("change", async (event) => {
-    profilesController.setCurrentProfileId(Number(event.target.value));
-    await sectionsController.refreshSections();
-  });
-
-  elements.newProfile.addEventListener("click", () => {
-    void profilesController.createProfile();
-  });
-
-  elements.pickFolder.addEventListener("click", () => {
-    void tracksController.pickMusicFolder();
-  });
-
-  elements.trackSelect.addEventListener("change", (event) => {
-    const nextIndex = Number(event.target.value);
-    void tracksController.selectTrackByIndex(nextIndex);
-  });
-
-  elements.markA.addEventListener("click", () => {
-    selectionController.setSelectionMarker("start");
-  });
-
-  elements.markB.addEventListener("click", () => {
-    selectionController.setSelectionMarker("end");
-  });
-
-  elements.saveSection.addEventListener("click", () => {
-    void sectionsController.saveSelectionAsSection();
-  });
-
-  elements.adaptivePlay.addEventListener("click", () => {
-    void sectionsController.playAdaptiveSection();
-  });
-
-  elements.speed.addEventListener("input", (event) => {
-    tracksController.setSpeed(Number(event.target.value));
-  });
-
-  audio.addEventListener("timeupdate", () => {
-    tracksController.syncWaveformPlaybackPosition();
-    void sectionsController.handleAudioBoundary();
-  });
-
-  audio.addEventListener("loadedmetadata", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("seeked", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("pause", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("ended", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  window.addEventListener("unload", () => {
-    tracksController.releaseCurrentTrackUrl();
-  });
-}
-
-function handleError(error) {
-  if (!error || error.name === "AbortError") {
-    return;
-  }
-
-  console.error(error);
-  window.alert(error.message || "Something went wrong.");
-}
-</file>
-
 <file path="repomix-instruction.md">
 <!--
   @role repository-instructions
@@ -3203,8 +3954,6 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
       </div>
 
       <div class="row">
-        <button id="markA" type="button" class="secondary">Mark A</button>
-        <button id="markB" type="button" class="secondary">Mark B</button>
         <button id="saveSection" type="button">Save Section</button>
         <span id="abDisplay" class="small">A — • B —</span>
       </div>
@@ -3238,14 +3987,14 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
       <div class="section-header">
         <div>
           <h2>Saved Sections</h2>
-          <p id="sectionSummary" class="small">No saved sections yet.</p>
+          <p id="sectionSummary" class="small">Select a track to view saved sections for that track.</p>
         </div>
       </div>
       <div id="sectionList" class="section-list"></div>
     </section>
   </div>
 
-  <script type="module" src="./src/app.js"></script>
+  <script type="module" src="./src/app/bootstrap.js"></script>
 </body>
 </html>
 </file>
