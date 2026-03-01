@@ -214,6 +214,14 @@ export function createActivitiesController({
           throw new Error("This activity references a saved section that no longer exists.");
         }
 
+        const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+        if (trackIndex === -1) {
+          throw new Error(
+            `Track "${section.trackName}" is not available in the currently selected folder.`,
+          );
+        }
+
         await focusSection(section.id);
         renderActivityList();
         return;
