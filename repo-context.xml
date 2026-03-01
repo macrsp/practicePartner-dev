@@ -50,7 +50,6 @@ The content is organized as follows:
 src/
   app/
     bootstrap.js
-    router.js
     state.js
   features/
     activities/
@@ -85,159 +84,6 @@ styles.css
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="src/features/activities/activities-controller.js">
-/**
- * @role controller
- * @owns reusable-activity state refresh and CRUD orchestration
- * @not-owns Today list ordering, practice-mode execution, or DOM rendering
- * @notes This controller is scaffolded so later feature work can land without another structural move.
- */
-
-import { state } from "../../app/state.js";
-import {
-  addActivity,
-  deleteActivity,
-  getActivitiesByProfile,
-  updateActivity,
-} from "../../persistence/activity-store.js";
-import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-
-const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
-
-export function createActivitiesController({ handleError } = {}) {
-  async function refreshActivities() {
-    if (!state.currentProfileId) {
-      state.activities = [];
-      return [];
-    }
-
-    const activities = await getActivitiesByProfile(state.currentProfileId);
-    state.activities = activities;
-    return activities;
-  }
-
-  async function createActivity(input) {
-    try {
-      validateActivityInput(input);
-
-      const activityId = await addActivity({
-        profileId: state.currentProfileId,
-        name: input.name.trim(),
-        targetType: input.targetType,
-        trackName: input.trackName ?? null,
-        sectionId: input.sectionId ?? null,
-        customReference: input.customReference?.trim() ?? null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-
-      await refreshActivities();
-      return activityId;
-    } catch (error) {
-      handleError?.(error);
-      return null;
-    }
-  }
-
-  async function saveActivity(activity) {
-    try {
-      validateActivityInput(activity);
-
-      await updateActivity({
-        ...activity,
-        updatedAt: Date.now(),
-      });
-
-      await refreshActivities();
-    } catch (error) {
-      handleError?.(error);
-    }
-  }
-
-  async function removeActivity(activityId) {
-    try {
-      await deleteActivity(activityId);
-      await refreshActivities();
-    } catch (error) {
-      handleError?.(error);
-    }
-  }
-
-  return {
-    refreshActivities,
-    createActivity,
-    saveActivity,
-    removeActivity,
-  };
-}
-
-function validateActivityInput(input) {
-  if (!input?.name?.trim()) {
-    throw new Error("Activity name is required.");
-  }
-
-  if (!VALID_TARGET_TYPES.has(input.targetType)) {
-    throw new Error("Activity target type is invalid.");
-  }
-
-  if (input.targetType === ACTIVITY_TARGET_TYPES.TRACK && !input.trackName) {
-    throw new Error("Track activities require a track.");
-  }
-
-  if (input.targetType === ACTIVITY_TARGET_TYPES.SECTION && !input.sectionId) {
-    throw new Error("Section activities require a saved section.");
-  }
-
-  if (
-    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
-    !input.customReference?.trim()
-  ) {
-    throw new Error("Custom activities require a reference.");
-  }
-}
-</file>
-
-<file path="src/features/activities/activities-ui.js">
-/**
- * @role renderer
- * @owns activity-label formatting and future activity-list presentation helpers
- * @not-owns activity persistence, routing, or Today list logic
- * @notes This file is intentionally thin until the activity UI surface is wired.
- */
-
-import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-
-export function getActivityTargetLabel(targetType) {
-  switch (targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK:
-      return "Track";
-    case ACTIVITY_TARGET_TYPES.SECTION:
-      return "Saved section";
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return "Custom";
-    default:
-      return "Unknown";
-  }
-}
-
-export function describeActivity(activity) {
-  if (!activity) {
-    return "";
-  }
-
-  switch (activity.targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK:
-      return `${activity.name} • Track: ${activity.trackName ?? "—"}`;
-    case ACTIVITY_TARGET_TYPES.SECTION:
-      return `${activity.name} • Saved section`;
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return `${activity.name} • ${activity.customReference ?? "Custom reference"}`;
-    default:
-      return activity.name ?? "";
-  }
-}
-</file>
 
 <file path="src/features/profiles/profiles-controller.js">
 /**
@@ -1848,25 +1694,6 @@ function handleError(error) {
 }
 </file>
 
-<file path="src/app/router.js">
-/**
- * @role route-coordinator
- * @owns surface-level route state and route transitions between workspace, Today list, and practice mode
- * @not-owns feature-specific rendering or persistence
- * @notes The current implementation keeps route state lightweight until additional surfaces are wired.
- */
-
-import { state } from "./state.js";
-
-export const ROUTES = {
-  WORKSPACE: "workspace",
-  TODAY_LIST: "today-list",
-  PRACTICE_MODE: "practice-mode",
-};
-
-const VALID_ROUTES = new Set(Object.values(ROUTES));
-</file>
-
 <file path="src/app/state.js">
 /**
  * @role shared-runtime-state
@@ -1896,6 +1723,159 @@ export const state = {
 
   activities: [],
 };
+</file>
+
+<file path="src/features/activities/activities-controller.js">
+/**
+ * @role controller
+ * @owns reusable-activity state refresh and CRUD orchestration
+ * @not-owns activity list rendering, workspace track/section focus behavior, or low-level IndexedDB helpers
+ * @notes Keep this controller focused on activity CRUD and activity-list refresh.
+ */
+
+import { state } from "../../app/state.js";
+import {
+  addActivity,
+  deleteActivity,
+  getActivitiesByProfile,
+  updateActivity,
+} from "../../persistence/activity-store.js";
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+
+const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
+
+export function createActivitiesController({ handleError } = {}) {
+  async function refreshActivities() {
+    if (!state.currentProfileId) {
+      state.activities = [];
+      return [];
+    }
+
+    const activities = await getActivitiesByProfile(state.currentProfileId);
+    state.activities = activities;
+    return activities;
+  }
+
+  async function createActivity(input) {
+    try {
+      validateActivityInput(input);
+
+      const activityId = await addActivity({
+        profileId: state.currentProfileId,
+        name: input.name.trim(),
+        targetType: input.targetType,
+        trackName: input.trackName ?? null,
+        sectionId: input.sectionId ?? null,
+        customReference: input.customReference?.trim() ?? null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+      return activityId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function saveActivity(activity) {
+    try {
+      validateActivityInput(activity);
+
+      await updateActivity({
+        ...activity,
+        updatedAt: Date.now(),
+      });
+
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function removeActivity(activityId) {
+    try {
+      await deleteActivity(activityId);
+      await refreshActivities();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  return {
+    refreshActivities,
+    createActivity,
+    saveActivity,
+    removeActivity,
+  };
+}
+
+function validateActivityInput(input) {
+  if (!input?.name?.trim()) {
+    throw new Error("Activity name is required.");
+  }
+
+  if (!VALID_TARGET_TYPES.has(input.targetType)) {
+    throw new Error("Activity target type is invalid.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.TRACK && !input.trackName) {
+    throw new Error("Track activities require a track.");
+  }
+
+  if (input.targetType === ACTIVITY_TARGET_TYPES.SECTION && !input.sectionId) {
+    throw new Error("Section activities require a saved section.");
+  }
+
+  if (
+    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
+    !input.customReference?.trim()
+  ) {
+    throw new Error("Custom activities require a reference.");
+  }
+}
+</file>
+
+<file path="src/features/activities/activities-ui.js">
+/**
+ * @role renderer
+ * @owns activity-label formatting and presentation helpers for activity UI
+ * @not-owns activity persistence, workspace state transitions, or focus behavior
+ * @notes Keep this file focused on presentation helpers for activity UI.
+ */
+
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+
+export function getActivityTargetLabel(targetType) {
+  switch (targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return "Track";
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return "Saved section";
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return "Custom";
+    default:
+      return "Unknown";
+  }
+}
+
+export function describeActivity(activity) {
+  if (!activity) {
+    return "";
+  }
+
+  switch (activity.targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return `${activity.name} • Track: ${activity.trackName ?? "—"}`;
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return `${activity.name} • Saved section`;
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return `${activity.name} • ${activity.customReference ?? "Custom reference"}`;
+    default:
+      return activity.name ?? "";
+  }
+}
 </file>
 
 <file path="src/persistence/activity-store.js">
