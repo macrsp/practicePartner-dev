@@ -71,6 +71,7 @@ src/
     db.js
   shared/
     constants.js
+    dialog.js
     shell-ui.js
     utils.js
     waveform.js
@@ -355,6 +356,185 @@ export function setTrackCount(text) {
 
 export function setSpeedDisplay(value) {
   elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
+}
+</file>
+
+<file path="src/shared/dialog.js">
+/**
+ * @role utility-module
+ * @owns promise-based dialog helpers (alert, confirm, prompt) using native <dialog>
+ * @not-owns DOM structure of the dialog element (defined in index.html), styling (defined in styles.css), or business logic
+ * @notes Drop-in replacements for window.alert, window.confirm, and window.prompt that avoid blocking the thread.
+ */
+
+let dialogEl;
+let titleEl;
+let messageEl;
+let inputEl;
+let confirmBtn;
+let cancelBtn;
+
+function ensureElements() {
+  if (dialogEl) {
+    return;
+  }
+
+  dialogEl = document.getElementById("appDialog");
+  titleEl = document.getElementById("dialogTitle");
+  messageEl = document.getElementById("dialogMessage");
+  inputEl = document.getElementById("dialogInput");
+  confirmBtn = document.getElementById("dialogConfirm");
+  cancelBtn = document.getElementById("dialogCancel");
+
+  if (!dialogEl) {
+    throw new Error("Missing required element: #appDialog");
+  }
+}
+
+function resetDialog() {
+  titleEl.textContent = "";
+  messageEl.textContent = "";
+  inputEl.value = "";
+  inputEl.hidden = true;
+  cancelBtn.hidden = false;
+  confirmBtn.textContent = "OK";
+}
+
+/**
+ * Shows an alert dialog. Returns a promise that resolves when dismissed.
+ */
+export function showAlert(message, { title = "" } = {}) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  cancelBtn.hidden = true;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", onConfirm);
+      dialogEl.removeEventListener("close", onClose);
+    };
+
+    const onConfirm = () => {
+      cleanup();
+      dialogEl.close();
+      resolve();
+    };
+
+    const onClose = () => {
+      cleanup();
+      resolve();
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    dialogEl.addEventListener("close", onClose);
+    dialogEl.showModal();
+    confirmBtn.focus();
+  });
+}
+
+/**
+ * Shows a confirm dialog. Returns a promise that resolves to true (confirm) or false (cancel).
+ */
+export function showConfirm(message, { title = "", confirmLabel = "Confirm", cancelLabel = "Cancel" } = {}) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      dialogEl.removeEventListener("close", onClose);
+    };
+
+    const onConfirm = () => {
+      cleanup();
+      dialogEl.close();
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      dialogEl.close();
+      resolve(false);
+    };
+
+    const onClose = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    dialogEl.addEventListener("close", onClose);
+    dialogEl.showModal();
+    confirmBtn.focus();
+  });
+}
+
+/**
+ * Shows a prompt dialog. Returns a promise that resolves to the entered string, or null on cancel.
+ */
+export function showPrompt(message, { title = "", defaultValue = "", confirmLabel = "OK", cancelLabel = "Cancel", placeholder = "" } = {}) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  inputEl.hidden = false;
+  inputEl.value = defaultValue;
+  inputEl.placeholder = placeholder;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      dialogEl.removeEventListener("close", onClose);
+      inputEl.removeEventListener("keydown", onKeydown);
+    };
+
+    const onConfirm = () => {
+      const value = inputEl.value;
+      cleanup();
+      dialogEl.close();
+      resolve(value);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      dialogEl.close();
+      resolve(null);
+    };
+
+    const onClose = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onKeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onConfirm();
+      }
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+    dialogEl.addEventListener("close", onClose);
+    inputEl.addEventListener("keydown", onKeydown);
+    dialogEl.showModal();
+    inputEl.focus();
+    inputEl.select();
+  });
 }
 </file>
 
@@ -733,407 +913,6 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   "tokenCount": {
     "encoding": "o200k_base"
   }
-}
-</file>
-
-<file path="src/features/profiles/profiles-controller.js">
-/**
- * @role controller
- * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
- * @not-owns section logic, track logic, activity logic, or direct IndexedDB schema management
- * @notes This controller may trigger section and activity refreshes after profile changes.
- */
-
-import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
-import { addProfile, getAllProfiles } from "../../persistence/db.js";
-import { state } from "../../app/state.js";
-import { renderProfiles } from "./profiles-ui.js";
-
-export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
-  async function ensureDefaultProfile() {
-    const profiles = await getAllProfiles();
-
-    if (!profiles.length) {
-      await addProfile({ name: DEFAULT_PROFILE_NAME });
-    }
-  }
-
-  async function refreshProfiles() {
-    const profiles = await getAllProfiles();
-    state.profiles = profiles;
-
-    if (!profiles.length) {
-      state.currentProfileId = null;
-      state.selectedActivityId = null;
-      renderProfiles([], null);
-      await Promise.all([refreshSections(), refreshActivities()]);
-      return;
-    }
-
-    if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
-      state.currentProfileId = profiles[0].id;
-    }
-
-    renderProfiles(profiles, state.currentProfileId);
-    await Promise.all([refreshSections(), refreshActivities()]);
-  }
-
-  async function createProfile() {
-    try {
-      const name = window.prompt("Profile name?");
-      const trimmed = name?.trim();
-
-      if (!trimmed) {
-        return;
-      }
-
-      const profileId = await addProfile({ name: trimmed });
-      state.currentProfileId = profileId;
-      state.selectedActivityId = null;
-      await refreshProfiles();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  function setCurrentProfileId(profileId) {
-    state.currentProfileId = profileId;
-    state.focusedSectionId = null;
-    state.currentPlayingSectionId = null;
-    state.selectedActivityId = null;
-  }
-
-  return {
-    ensureDefaultProfile,
-    refreshProfiles,
-    createProfile,
-    setCurrentProfileId,
-  };
-}
-</file>
-
-<file path="src/features/sections/sections-controller.js">
-/**
- * @role controller
- * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
- * @notes This controller coordinates with track loading when a section references another track.
- */
-
-import {
-  addPlayLog,
-  addSection,
-  deleteSection,
-  getSectionsByProfile,
-  updateSection,
-} from "../../persistence/db.js";
-import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
-import {
-  calculateMastery,
-  createSectionLabel,
-  normalizeSectionRecord,
-  sortSections,
-} from "../../shared/utils.js";
-import { renderSections } from "./sections-ui.js";
-
-export function createSectionsController({
-  audio,
-  selectTrackByIndex,
-  refreshSelectionUi,
-  refreshMasteryUi,
-  syncPlaybackUi,
-  renderActivityList,
-  handleError,
-}) {
-  async function refreshSections() {
-    if (!state.currentProfileId) {
-      state.allSections = [];
-      state.sections = [];
-      renderSectionList();
-      refreshMasteryUi();
-      renderActivityList();
-      return;
-    }
-
-    const sections = await getSectionsByProfile(state.currentProfileId);
-    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
-
-    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
-      state.focusedSectionId = null;
-    }
-
-    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      state.currentPlayingSectionId = null;
-    }
-
-    renderSectionList();
-    refreshMasteryUi();
-    renderActivityList();
-  }
-
-  function getVisibleSections() {
-    const currentTrackName = state.currentTrack?.name;
-
-    if (!currentTrackName) {
-      return [];
-    }
-
-    return state.allSections.filter((section) => section.trackName === currentTrackName);
-  }
-
-  function getActiveVisibleSectionId(visibleSections) {
-    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      return state.currentPlayingSectionId;
-    }
-
-    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
-      return state.focusedSectionId;
-    }
-
-    return null;
-  }
-
-  function renderSectionList() {
-    const visibleSections = getVisibleSections();
-    state.sections = visibleSections;
-
-    renderSections({
-      sections: visibleSections,
-      activeSectionId: getActiveVisibleSectionId(visibleSections),
-      currentTrackName: state.currentTrack?.name ?? null,
-      onFocus: (sectionId) => {
-        void focusSection(sectionId);
-      },
-      onPlay: (sectionId) => {
-        void playSectionById(sectionId);
-      },
-      onDelete: (sectionId) => {
-        void removeSection(sectionId);
-      },
-    });
-  }
-
-  async function saveSelectionAsSection() {
-    try {
-      if (!state.currentProfileId) {
-        window.alert("Select a profile first.");
-        return;
-      }
-
-      if (!state.currentTrack) {
-        window.alert("Pick a track first.");
-        return;
-      }
-
-      if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Drag on the waveform to mark a section before saving.");
-        return;
-      }
-
-      const start = Math.min(state.selection.start, state.selection.end);
-      const end = Math.max(state.selection.start, state.selection.end);
-
-      if (Math.abs(end - start) < 0.05) {
-        window.alert("The selected section is too short.");
-        return;
-      }
-
-      const sectionId = await addSection({
-        profileId: state.currentProfileId,
-        trackName: state.currentTrack.name,
-        start,
-        end,
-        playCount: 0,
-        mastery: 0,
-        lastPlayed: 0,
-        createdAt: Date.now(),
-      });
-
-      state.focusedSectionId = sectionId;
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function focusSection(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
-        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
-      }
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function ensureTrackLoadedForSection(section) {
-    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-    if (trackIndex === -1) {
-      window.alert(
-        `Track "${section.trackName}" is not available in the currently selected folder.`,
-      );
-      return false;
-    }
-
-    if (state.currentTrack?.name !== section.trackName) {
-      await selectTrackByIndex(trackIndex, { preserveSelection: true });
-    }
-
-    return true;
-  }
-
-  async function playSectionById(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const ready = await ensureTrackLoadedForSection(section);
-
-      if (!ready) {
-        return;
-      }
-
-      state.currentPlayingSectionId = section.id;
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-
-      audio.currentTime = section.start;
-      syncPlaybackUi();
-      await audio.play();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function handleAudioBoundary() {
-    if (!state.currentPlayingSectionId) {
-      return;
-    }
-
-    const activeSection = state.allSections.find(
-      (section) => section.id === state.currentPlayingSectionId,
-    );
-
-    if (!activeSection) {
-      return;
-    }
-
-    if (audio.currentTime < activeSection.end) {
-      return;
-    }
-
-    if (elements.loopToggle.checked) {
-      audio.currentTime = activeSection.start;
-      syncPlaybackUi();
-      return;
-    }
-
-    audio.pause();
-    audio.currentTime = activeSection.end;
-    syncPlaybackUi();
-
-    const completedSectionId = state.currentPlayingSectionId;
-    state.currentPlayingSectionId = null;
-    renderSectionList();
-
-    await finalizeSectionPlay(completedSectionId);
-  }
-
-  async function finalizeSectionPlay(sectionId) {
-    const section = state.allSections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    const now = Date.now();
-    const updatedSection = {
-      ...section,
-      playCount: section.playCount + 1,
-      lastPlayed: now,
-      mastery: calculateMastery(section, now),
-    };
-
-    await updateSection(updatedSection);
-    await addPlayLog({
-      sectionId,
-      timestamp: now,
-      speed: audio.playbackRate,
-    });
-
-    state.focusedSectionId = sectionId;
-    await refreshSections();
-  }
-
-  async function removeSection(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
-
-      if (!confirmed) {
-        return;
-      }
-
-      if (state.currentPlayingSectionId === sectionId) {
-        audio.pause();
-        state.currentPlayingSectionId = null;
-      }
-
-      if (state.focusedSectionId === sectionId) {
-        state.focusedSectionId = null;
-      }
-
-      await deleteSection(sectionId);
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  return {
-    refreshSections,
-    renderSectionList,
-    saveSelectionAsSection,
-    focusSection,
-    playSectionById,
-    handleAudioBoundary,
-    removeSection,
-  };
 }
 </file>
 
@@ -1692,92 +1471,6 @@ export const elements = {
 };
 </file>
 
-<file path="src/shared/utils.js">
-/**
- * @role utility-module
- * @owns pure helpers for formatting, sorting, normalization, and clamping
- * @not-owns DOM updates, persistence, or mutable application state
- * @notes Prefer adding only side-effect-free helpers here.
- */
-
-import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
-
-const DAY_MS = 1000 * 60 * 60 * 24;
-
-export function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-export function isSupportedAudioFile(name) {
-  const lower = name.toLowerCase();
-  return SUPPORTED_AUDIO_EXTENSIONS.some((extension) => lower.endsWith(extension));
-}
-
-export function compareByName(a, b) {
-  return a.name.localeCompare(b.name, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-export function formatTime(totalSeconds) {
-  if (!Number.isFinite(totalSeconds)) {
-    return "—";
-  }
-
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds - mins * 60;
-  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
-}
-
-export function createSectionLabel(section) {
-  return `${formatTime(section.start)} → ${formatTime(section.end)}`;
-}
-
-export function normalizeSectionRecord(section) {
-  return {
-    ...section,
-    playCount: section.playCount ?? 0,
-    mastery: section.mastery ?? 0,
-    lastPlayed: section.lastPlayed ?? 0,
-    createdAt: section.createdAt ?? 0,
-  };
-}
-
-export function calculateMastery(section, now = Date.now()) {
-  const nextPlayCount = (section.playCount ?? 0) + 1;
-  const repetitionScore = Math.min(1, nextPlayCount / 10);
-
-  const daysSinceLastPlay = section.lastPlayed
-    ? Math.max(0, (now - section.lastPlayed) / DAY_MS)
-    : Infinity;
-
-  const recencyScore = Number.isFinite(daysSinceLastPlay) ? 1 / (1 + daysSinceLastPlay) : 0;
-
-  return Number(Math.min(1, 0.5 * repetitionScore + 0.5 * recencyScore).toFixed(2));
-}
-
-export function sortSections(a, b) {
-  return (
-    a.trackName.localeCompare(b.trackName, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }) ||
-    a.start - b.start ||
-    a.end - b.end ||
-    a.id - b.id
-  );
-}
-
-export function summarizeTrackCount(count) {
-  if (count === 0) {
-    return "No audio files found in the selected folder.";
-  }
-
-  return `${count} track${count === 1 ? "" : "s"} loaded.`;
-}
-</file>
-
 <file path=".gitignore">
 # @role ignore-rules
 # @owns repository-local ignore patterns for generated files and machine-specific clutter
@@ -1786,198 +1479,6 @@ export function summarizeTrackCount(count) {
 
 dist/
 .DS_Store
-</file>
-
-<file path="src/app/bootstrap.js">
-/**
- * @role composition-root
- * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
- * @not-owns business logic for profiles, tracks, sections, activities, or persistence
- * @notes Keep this file thin; push feature logic into dedicated modules.
- */
-
-import { openDatabase } from "../persistence/db.js";
-import { elements } from "../shared/shell-ui.js";
-import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
-import { createActivitiesController } from "../features/activities/activities-controller.js";
-import { createProfilesController } from "../features/profiles/profiles-controller.js";
-import { createSectionsController } from "../features/sections/sections-controller.js";
-import { createSelectionController } from "../features/sections/selection-controller.js";
-import { createTracksController } from "../features/tracks/tracks-controller.js";
-import { createWaveform } from "../shared/waveform.js";
-
-const audio = elements.audio;
-
-let selectionController;
-let sectionsController;
-let tracksController;
-let activitiesController;
-
-const waveform = createWaveform({
-  mountEl: elements.waveformMount,
-  onSelectionChange: (selection) => {
-    selectionController.handleWaveformSelectionChange(selection);
-  },
-});
-
-selectionController = createSelectionController({
-  waveform,
-  renderSectionList: () => sectionsController.renderSectionList(),
-});
-
-tracksController = createTracksController({
-  audio,
-  waveform,
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  renderSectionList: () => sectionsController.renderSectionList(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  renderActivityList: () => activitiesController.renderActivityList(),
-  handleError,
-});
-
-sectionsController = createSectionsController({
-  audio,
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
-  renderActivityList: () => activitiesController.renderActivityList(),
-  handleError,
-});
-
-activitiesController = createActivitiesController({
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  focusSection: (...args) => sectionsController.focusSection(...args),
-  handleError,
-});
-
-const profilesController = createProfilesController({
-  refreshSections: () => sectionsController.refreshSections(),
-  refreshActivities: () => activitiesController.refreshActivities(),
-  handleError,
-});
-
-bindEvents();
-bootstrap().catch(handleError);
-
-async function bootstrap() {
-  await openDatabase();
-  await profilesController.ensureDefaultProfile();
-
-  renderTracks([], null);
-  setTrackCount("No folder selected.");
-  tracksController.setSpeed(Number(elements.speed.value));
-
-  await profilesController.refreshProfiles();
-  await tracksController.restoreRememberedFolder();
-  selectionController.refreshSelectionUi();
-}
-
-function bindEvents() {
-  elements.profileSelect.addEventListener("change", async (event) => {
-    profilesController.setCurrentProfileId(Number(event.target.value));
-    await profilesController.refreshProfiles();
-  });
-
-  elements.newProfile.addEventListener("click", () => {
-    void profilesController.createProfile();
-  });
-
-  elements.pickFolder.addEventListener("click", () => {
-    void tracksController.pickMusicFolder();
-  });
-
-  elements.trackSelect.addEventListener("change", (event) => {
-    const nextIndex = Number(event.target.value);
-    void tracksController.selectTrackByIndex(nextIndex);
-  });
-
-  elements.saveSection.addEventListener("click", () => {
-    void sectionsController.saveSelectionAsSection();
-  });
-
-  elements.addTrackActivity.addEventListener("click", () => {
-    void activitiesController.createTrackActivityFromCurrentTrack();
-  });
-
-  elements.addSectionActivity.addEventListener("click", () => {
-    void activitiesController.createSectionActivityFromFocusedSection();
-  });
-
-  elements.addCustomActivity.addEventListener("click", () => {
-    void activitiesController.createCustomActivity();
-  });
-
-  elements.speed.addEventListener("input", (event) => {
-    tracksController.setSpeed(Number(event.target.value));
-  });
-
-  audio.addEventListener("timeupdate", () => {
-    tracksController.syncWaveformPlaybackPosition();
-    void sectionsController.handleAudioBoundary();
-  });
-
-  audio.addEventListener("loadedmetadata", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("seeked", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("pause", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("ended", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  window.addEventListener("unload", () => {
-    tracksController.releaseCurrentTrackUrl();
-  });
-}
-
-function handleError(error) {
-  if (!error || error.name === "AbortError") {
-    return;
-  }
-
-  console.error(error);
-  window.alert(error.message || "Something went wrong.");
-}
-</file>
-
-<file path="src/app/state.js">
-/**
- * @role shared-runtime-state
- * @owns in-memory application state shared across features
- * @not-owns persistence, validation rules, or DOM rendering
- * @notes Keep this as plain data; behavior belongs in controllers or helpers.
- */
-
-export const state = {
-  profiles: [],
-  currentProfileId: null,
-
-  currentFolderHandle: null,
-  currentFolderName: null,
-  tracks: [],
-  currentTrack: null,
-  currentTrackUrl: null,
-
-  allSections: [],
-  sections: [],
-  selection: {
-    start: null,
-    end: null,
-  },
-  focusedSectionId: null,
-  currentPlayingSectionId: null,
-
-  activities: [],
-  selectedActivityId: null,
-};
 </file>
 
 <file path="src/features/activities/activities-ui.js">
@@ -2160,6 +1661,782 @@ function getActivityUseState(activity, sectionsById) {
     label: "Use",
   };
 }
+</file>
+
+<file path="src/features/profiles/profiles-controller.js">
+/**
+ * @role controller
+ * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
+ * @not-owns section logic, track logic, activity logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section and activity refreshes after profile changes.
+ */
+
+import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
+import { addProfile, getAllProfiles } from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { showPrompt } from "../../shared/dialog.js";
+import { renderProfiles } from "./profiles-ui.js";
+
+export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
+  async function ensureDefaultProfile() {
+    const profiles = await getAllProfiles();
+
+    if (!profiles.length) {
+      await addProfile({ name: DEFAULT_PROFILE_NAME });
+    }
+  }
+
+  async function refreshProfiles() {
+    const profiles = await getAllProfiles();
+    state.profiles = profiles;
+
+    if (!profiles.length) {
+      state.currentProfileId = null;
+      state.selectedActivityId = null;
+      renderProfiles([], null);
+      await Promise.all([refreshSections(), refreshActivities()]);
+      return;
+    }
+
+    if (!profiles.some((profile) => profile.id === state.currentProfileId)) {
+      state.currentProfileId = profiles[0].id;
+    }
+
+    renderProfiles(profiles, state.currentProfileId);
+    await Promise.all([refreshSections(), refreshActivities()]);
+  }
+
+  async function createProfile() {
+    try {
+      const name = await showPrompt("Profile name:", { title: "New Profile" });
+      const trimmed = name?.trim();
+
+      if (!trimmed) {
+        return;
+      }
+
+      const profileId = await addProfile({ name: trimmed });
+      state.currentProfileId = profileId;
+      state.selectedActivityId = null;
+      await refreshProfiles();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  function setCurrentProfileId(profileId) {
+    state.currentProfileId = profileId;
+    state.focusedSectionId = null;
+    state.currentPlayingSectionId = null;
+    state.selectedActivityId = null;
+  }
+
+  return {
+    ensureDefaultProfile,
+    refreshProfiles,
+    createProfile,
+    setCurrentProfileId,
+  };
+}
+</file>
+
+<file path="src/features/sections/sections-controller.js">
+/**
+ * @role controller
+ * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
+ * @notes This controller coordinates with track loading when a section references another track.
+ */
+
+import {
+  addPlayLog,
+  addSection,
+  deleteSection,
+  getSectionsByProfile,
+  updateSection,
+} from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
+import {
+  calculateMastery,
+  createSectionLabel,
+  normalizeSectionRecord,
+  sortSections,
+} from "../../shared/utils.js";
+import { renderSections } from "./sections-ui.js";
+
+export function createSectionsController({
+  audio,
+  selectTrackByIndex,
+  refreshSelectionUi,
+  refreshMasteryUi,
+  syncPlaybackUi,
+  renderActivityList,
+  handleError,
+}) {
+  async function refreshSections() {
+    if (!state.currentProfileId) {
+      state.allSections = [];
+      state.visibleSections = [];
+      renderSectionList();
+      refreshMasteryUi();
+      renderActivityList();
+      return;
+    }
+
+    const sections = await getSectionsByProfile(state.currentProfileId);
+    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
+
+    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
+      state.focusedSectionId = null;
+    }
+
+    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      state.currentPlayingSectionId = null;
+    }
+
+    renderSectionList();
+    refreshMasteryUi();
+    renderActivityList();
+  }
+
+  function getVisibleSections() {
+    const currentTrackName = state.currentTrack?.name;
+
+    if (!currentTrackName) {
+      return [];
+    }
+
+    return state.allSections.filter((section) => section.trackName === currentTrackName);
+  }
+
+  function getActiveVisibleSectionId(visibleSections) {
+    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      return state.currentPlayingSectionId;
+    }
+
+    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
+      return state.focusedSectionId;
+    }
+
+    return null;
+  }
+
+  function renderSectionList() {
+    const visibleSections = getVisibleSections();
+    state.visibleSections = visibleSections;
+
+    renderSections({
+      sections: visibleSections,
+      activeSectionId: getActiveVisibleSectionId(visibleSections),
+      currentTrackName: state.currentTrack?.name ?? null,
+      onFocus: (sectionId) => {
+        void focusSection(sectionId);
+      },
+      onPlay: (sectionId) => {
+        void playSectionById(sectionId);
+      },
+      onDelete: (sectionId) => {
+        void removeSection(sectionId);
+      },
+    });
+  }
+
+  async function saveSelectionAsSection() {
+    try {
+      if (!state.currentProfileId) {
+        await showAlert("Select a profile first.");
+        return;
+      }
+
+      if (!state.currentTrack) {
+        await showAlert("Pick a track first.");
+        return;
+      }
+
+      if (state.selection.start == null || state.selection.end == null) {
+        await showAlert("Drag on the waveform to mark a section before saving.");
+        return;
+      }
+
+      const start = Math.min(state.selection.start, state.selection.end);
+      const end = Math.max(state.selection.start, state.selection.end);
+
+      if (Math.abs(end - start) < 0.05) {
+        await showAlert("The selected section is too short.");
+        return;
+      }
+
+      const label = await showPrompt("Optional name for this section:", {
+        title: "Save Section",
+        placeholder: "e.g. Tricky passage, Coda, mm. 32–40",
+      });
+
+      if (label === null) {
+        return;
+      }
+
+      const sectionId = await addSection({
+        profileId: state.currentProfileId,
+        trackName: state.currentTrack.name,
+        label: label.trim() || null,
+        start,
+        end,
+        playCount: 0,
+        mastery: 0,
+        lastPlayed: 0,
+        createdAt: Date.now(),
+      });
+
+      state.focusedSectionId = sectionId;
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function focusSection(sectionId) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
+        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
+      }
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function ensureTrackLoadedForSection(section) {
+    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+    if (trackIndex === -1) {
+      await showAlert(
+        `Track "${section.trackName}" is not available in the currently selected folder.`,
+      );
+      return false;
+    }
+
+    if (state.currentTrack?.name !== section.trackName) {
+      await selectTrackByIndex(trackIndex, { preserveSelection: true });
+    }
+
+    return true;
+  }
+
+  async function playSectionById(sectionId) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return;
+      }
+
+      state.currentPlayingSectionId = section.id;
+      state.focusedSectionId = section.id;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+
+      audio.currentTime = section.start;
+      syncPlaybackUi();
+      await audio.play();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function handleAudioBoundary() {
+    if (!state.currentPlayingSectionId) {
+      return;
+    }
+
+    const activeSection = state.allSections.find(
+      (section) => section.id === state.currentPlayingSectionId,
+    );
+
+    if (!activeSection) {
+      return;
+    }
+
+    if (audio.currentTime < activeSection.end) {
+      return;
+    }
+
+    if (elements.loopToggle.checked) {
+      audio.currentTime = activeSection.start;
+      syncPlaybackUi();
+      return;
+    }
+
+    audio.pause();
+    audio.currentTime = activeSection.end;
+    syncPlaybackUi();
+
+    const completedSectionId = state.currentPlayingSectionId;
+    state.currentPlayingSectionId = null;
+    renderSectionList();
+
+    await finalizeSectionPlay(completedSectionId);
+  }
+
+  async function finalizeSectionPlay(sectionId) {
+    const section = state.allSections.find((item) => item.id === sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    const now = Date.now();
+    const updatedSection = {
+      ...section,
+      playCount: section.playCount + 1,
+      lastPlayed: now,
+      mastery: calculateMastery(section, now),
+    };
+
+    await updateSection(updatedSection);
+    await addPlayLog({
+      sectionId,
+      timestamp: now,
+      speed: audio.playbackRate,
+    });
+
+    state.focusedSectionId = sectionId;
+    await refreshSections();
+  }
+
+  async function removeSection(sectionId) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const confirmed = await showConfirm(`Delete section ${createSectionLabel(section)}?`, {
+        title: "Delete Section",
+        confirmLabel: "Delete",
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
+      if (state.currentPlayingSectionId === sectionId) {
+        audio.pause();
+        state.currentPlayingSectionId = null;
+      }
+
+      if (state.focusedSectionId === sectionId) {
+        state.focusedSectionId = null;
+      }
+
+      await deleteSection(sectionId);
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  return {
+    refreshSections,
+    renderSectionList,
+    saveSelectionAsSection,
+    focusSection,
+    playSectionById,
+    handleAudioBoundary,
+    removeSection,
+  };
+}
+</file>
+
+<file path="src/shared/utils.js">
+/**
+ * @role utility-module
+ * @owns pure helpers for formatting, sorting, normalization, and clamping
+ * @not-owns DOM updates, persistence, or mutable application state
+ * @notes Prefer adding only side-effect-free helpers here.
+ */
+
+import { SUPPORTED_AUDIO_EXTENSIONS } from "./constants.js";
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+export function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function isSupportedAudioFile(name) {
+  const lower = name.toLowerCase();
+  return SUPPORTED_AUDIO_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+export function compareByName(a, b) {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+export function formatTime(totalSeconds) {
+  if (!Number.isFinite(totalSeconds)) {
+    return "—";
+  }
+
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds - mins * 60;
+  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
+}
+
+export function createSectionLabel(section) {
+  const timeRange = `${formatTime(section.start)} → ${formatTime(section.end)}`;
+
+  if (section.label) {
+    return `${section.label} (${timeRange})`;
+  }
+
+  return timeRange;
+}
+
+export function normalizeSectionRecord(section) {
+  return {
+    ...section,
+    label: section.label ?? null,
+    playCount: section.playCount ?? 0,
+    mastery: section.mastery ?? 0,
+    lastPlayed: section.lastPlayed ?? 0,
+    createdAt: section.createdAt ?? 0,
+  };
+}
+
+export function calculateMastery(section, now = Date.now()) {
+  const nextPlayCount = (section.playCount ?? 0) + 1;
+  const repetitionScore = Math.min(1, nextPlayCount / 10);
+
+  const daysSinceLastPlay = section.lastPlayed
+    ? Math.max(0, (now - section.lastPlayed) / DAY_MS)
+    : Infinity;
+
+  const recencyScore = Number.isFinite(daysSinceLastPlay) ? 1 / (1 + daysSinceLastPlay) : 0;
+
+  return Number(Math.min(1, 0.5 * repetitionScore + 0.5 * recencyScore).toFixed(2));
+}
+
+export function sortSections(a, b) {
+  return (
+    a.trackName.localeCompare(b.trackName, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    a.start - b.start ||
+    a.end - b.end ||
+    a.id - b.id
+  );
+}
+
+export function summarizeTrackCount(count) {
+  if (count === 0) {
+    return "No audio files found in the selected folder.";
+  }
+
+  return `${count} track${count === 1 ? "" : "s"} loaded.`;
+}
+</file>
+
+<file path=".github/workflows/update-repo-context.yml">
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
+
+name: Update Repo Context
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths-ignore:
+      - repo-context.xml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-repo-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate repo context
+        run: npx --yes repomix@1.11.1 --config repomix.config.json
+
+      - name: Compute safe artifact name
+        shell: bash
+        run: |
+          raw_ref="${GITHUB_REF_NAME}"
+          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+
+          if [ -z "$safe_ref" ]; then
+            safe_ref="unnamed-ref"
+          fi
+
+          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+
+      - name: Upload repo context artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-context-${{ env.safe_ref }}
+          path: repo-context.xml
+
+      - name: Commit updated repo context to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo-context.xml
+
+          if git diff --cached --quiet; then
+            echo "No repo context changes."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh repo context"
+          git push origin HEAD:${GITHUB_REF_NAME}
+</file>
+
+<file path="src/app/bootstrap.js">
+/**
+ * @role composition-root
+ * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
+ * @not-owns business logic for profiles, tracks, sections, activities, or persistence
+ * @notes Keep this file thin; push feature logic into dedicated modules.
+ */
+
+import { openDatabase } from "../persistence/db.js";
+import { elements } from "../shared/shell-ui.js";
+import { showAlert } from "../shared/dialog.js";
+import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { createActivitiesController } from "../features/activities/activities-controller.js";
+import { createProfilesController } from "../features/profiles/profiles-controller.js";
+import { createSectionsController } from "../features/sections/sections-controller.js";
+import { createSelectionController } from "../features/sections/selection-controller.js";
+import { createTracksController } from "../features/tracks/tracks-controller.js";
+import { createWaveform } from "../shared/waveform.js";
+
+const audio = elements.audio;
+
+let selectionController;
+let sectionsController;
+let tracksController;
+let activitiesController;
+
+const waveform = createWaveform({
+  mountEl: elements.waveformMount,
+  onSelectionChange: (selection) => {
+    selectionController.handleWaveformSelectionChange(selection);
+  },
+});
+
+selectionController = createSelectionController({
+  waveform,
+  renderSectionList: () => sectionsController.renderSectionList(),
+});
+
+tracksController = createTracksController({
+  audio,
+  waveform,
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  renderSectionList: () => sectionsController.renderSectionList(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  handleError,
+});
+
+sectionsController = createSectionsController({
+  audio,
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  handleError,
+});
+
+activitiesController = createActivitiesController({
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  focusSection: (...args) => sectionsController.focusSection(...args),
+  handleError,
+});
+
+const profilesController = createProfilesController({
+  refreshSections: () => sectionsController.refreshSections(),
+  refreshActivities: () => activitiesController.refreshActivities(),
+  handleError,
+});
+
+bindEvents();
+bootstrap().catch(handleError);
+
+async function bootstrap() {
+  await openDatabase();
+  await profilesController.ensureDefaultProfile();
+
+  renderTracks([], null);
+  setTrackCount("No folder selected.");
+  tracksController.setSpeed(Number(elements.speed.value));
+
+  await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
+  selectionController.refreshSelectionUi();
+}
+
+function bindEvents() {
+  elements.profileSelect.addEventListener("change", async (event) => {
+    profilesController.setCurrentProfileId(Number(event.target.value));
+    await profilesController.refreshProfiles();
+  });
+
+  elements.newProfile.addEventListener("click", () => {
+    void profilesController.createProfile();
+  });
+
+  elements.pickFolder.addEventListener("click", () => {
+    void tracksController.pickMusicFolder();
+  });
+
+  elements.trackSelect.addEventListener("change", (event) => {
+    const nextIndex = Number(event.target.value);
+    void tracksController.selectTrackByIndex(nextIndex);
+  });
+
+  elements.saveSection.addEventListener("click", () => {
+    void sectionsController.saveSelectionAsSection();
+  });
+
+  elements.addTrackActivity.addEventListener("click", () => {
+    void activitiesController.createTrackActivityFromCurrentTrack();
+  });
+
+  elements.addSectionActivity.addEventListener("click", () => {
+    void activitiesController.createSectionActivityFromFocusedSection();
+  });
+
+  elements.addCustomActivity.addEventListener("click", () => {
+    void activitiesController.createCustomActivity();
+  });
+
+  elements.speed.addEventListener("input", (event) => {
+    tracksController.setSpeed(Number(event.target.value));
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    tracksController.syncWaveformPlaybackPosition();
+    void sectionsController.handleAudioBoundary();
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("seeked", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("pause", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  audio.addEventListener("ended", () => {
+    tracksController.syncWaveformPlaybackPosition();
+  });
+
+  window.addEventListener("unload", () => {
+    tracksController.releaseCurrentTrackUrl();
+  });
+}
+
+async function handleError(error) {
+  if (!error || error.name === "AbortError") {
+    return;
+  }
+
+  console.error(error);
+  await showAlert(error.message || "Something went wrong.");
+}
+</file>
+
+<file path="src/app/state.js">
+/**
+ * @role shared-runtime-state
+ * @owns in-memory application state shared across features
+ * @not-owns persistence, validation rules, or DOM rendering
+ * @notes Keep this as plain data; behavior belongs in controllers or helpers.
+ */
+
+export const state = {
+  profiles: [],
+  currentProfileId: null,
+
+  currentFolderHandle: null,
+  currentFolderName: null,
+  tracks: [],
+  currentTrack: null,
+  currentTrackUrl: null,
+
+  allSections: [],
+  visibleSections: [],
+  selection: {
+    start: null,
+    end: null,
+  },
+  focusedSectionId: null,
+  currentPlayingSectionId: null,
+
+  activities: [],
+  selectedActivityId: null,
+};
 </file>
 
 <file path="styles.css">
@@ -2417,6 +2694,66 @@ audio {
   color: var(--muted);
 }
 
+/* Dialog */
+
+.app-dialog {
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  font-family: inherit;
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.dialog-title:empty {
+  display: none;
+}
+
+.dialog-message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.dialog-message:empty {
+  display: none;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.dialog-input:focus {
+  border-color: var(--primary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @media (max-width: 720px) {
   body {
     padding: 16px;
@@ -2443,80 +2780,6 @@ audio {
 }
 </file>
 
-<file path=".github/workflows/update-repo-context.yml">
-# @role workflow
-# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
-# @not-owns application runtime behavior or repository architecture rules
-# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
-
-name: Update Repo Context
-
-on:
-  push:
-    branches-ignore:
-      - main
-    paths-ignore:
-      - repo-context.xml
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: update-repo-context-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Generate repo context
-        run: npx --yes repomix@1.11.1 --config repomix.config.json
-
-      - name: Compute safe artifact name
-        shell: bash
-        run: |
-          raw_ref="${GITHUB_REF_NAME}"
-          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
-
-          if [ -z "$safe_ref" ]; then
-            safe_ref="unnamed-ref"
-          fi
-
-          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
-
-      - name: Upload repo context artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: repo-context-${{ env.safe_ref }}
-          path: repo-context.xml
-
-      - name: Commit updated repo context to branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repo-context.xml
-
-          if git diff --cached --quiet; then
-            echo "No repo context changes."
-            exit 0
-          fi
-
-          git commit -m "chore: refresh repo context"
-          git push origin HEAD:${GITHUB_REF_NAME}
-</file>
-
 <file path="src/features/activities/activities-controller.js">
 /**
  * @role controller
@@ -2533,6 +2796,7 @@ import {
   updateActivity,
 } from "../../persistence/activity-store.js";
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
 import { createSectionLabel } from "../../shared/utils.js";
 import { renderActivities } from "./activities-ui.js";
 
@@ -2630,14 +2894,18 @@ export function createActivitiesController({
         throw new Error("Pick a track first.");
       }
 
-      const name = window.prompt("Activity name?", state.currentTrack.name)?.trim();
+      const name = await showPrompt("Activity name:", {
+        title: "Add Track Activity",
+        defaultValue: state.currentTrack.name,
+      });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.TRACK,
         trackName: state.currentTrack.name,
       });
@@ -2658,14 +2926,18 @@ export function createActivitiesController({
       }
 
       const defaultName = `${section.trackName} ${createSectionLabel(section)}`;
-      const name = window.prompt("Activity name?", defaultName)?.trim();
+      const name = await showPrompt("Activity name:", {
+        title: "Add Section Activity",
+        defaultValue: defaultName,
+      });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.SECTION,
         sectionId: section.id,
       });
@@ -2679,22 +2951,27 @@ export function createActivitiesController({
     try {
       ensureActiveProfile();
 
-      const name = window.prompt("Activity name?")?.trim();
+      const name = await showPrompt("Activity name:", { title: "Add Custom Activity" });
+      const trimmed = name?.trim();
 
-      if (!name) {
+      if (!trimmed) {
         return null;
       }
 
-      const customReference = window.prompt("Custom reference?")?.trim();
+      const customReference = await showPrompt("Custom reference:", {
+        title: "Add Custom Activity",
+        placeholder: "e.g. Scales in D major, Bow exercises",
+      });
+      const trimmedRef = customReference?.trim();
 
-      if (!customReference) {
+      if (!trimmedRef) {
         return null;
       }
 
       return createActivity({
-        name,
+        name: trimmed,
         targetType: ACTIVITY_TARGET_TYPES.CUSTOM,
-        customReference,
+        customReference: trimmedRef,
       });
     } catch (error) {
       handleError?.(error);
@@ -2761,7 +3038,10 @@ export function createActivitiesController({
         return;
       }
 
-      const confirmed = window.confirm(`Delete activity "${activity.name}"?`);
+      const confirmed = await showConfirm(`Delete activity "${activity.name}"?`, {
+        title: "Delete Activity",
+        confirmLabel: "Delete",
+      });
 
       if (!confirmed) {
         return;
@@ -2835,11 +3115,11 @@ function validateActivityInput(input) {
 
 function sortActivities(a, b) {
   return (
+    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
     a.name.localeCompare(b.name, undefined, {
       numeric: true,
       sensitivity: "base",
     }) ||
-    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
     a.id - b.id
   );
 }
@@ -3847,6 +4127,16 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
       <div id="activityList" class="section-list"></div>
     </section>
   </div>
+
+  <dialog id="appDialog" class="app-dialog">
+    <h3 id="dialogTitle" class="dialog-title"></h3>
+    <p id="dialogMessage" class="dialog-message"></p>
+    <input id="dialogInput" type="text" class="dialog-input" hidden />
+    <div class="dialog-actions">
+      <button id="dialogCancel" type="button" class="secondary">Cancel</button>
+      <button id="dialogConfirm" type="button">OK</button>
+    </div>
+  </dialog>
 
   <script type="module" src="./src/app/bootstrap.js"></script>
 </body>
