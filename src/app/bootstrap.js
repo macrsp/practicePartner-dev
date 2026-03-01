@@ -1,17 +1,18 @@
 /**
  * @role composition-root
- * @owns app bootstrap, controller composition, DOM event wiring, global error handling
- * @not-owns business logic for profiles, tracks, sections, selection, or persistence
+ * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
+ * @not-owns business logic for profiles, tracks, sections, activities, or persistence
  * @notes Keep this file thin; push feature logic into dedicated modules.
  */
 
-import { openDatabase } from "./db.js";
-import { elements, renderTracks, setTrackCount } from "./ui.js";
-import { createProfilesController } from "./profiles-controller.js";
-import { createSectionsController } from "./sections-controller.js";
-import { createSelectionController } from "./selection-controller.js";
-import { createTracksController } from "./tracks-controller.js";
-import { createWaveform } from "./waveform.js";
+import { openDatabase } from "../persistence/db.js";
+import { elements } from "../shared/shell-ui.js";
+import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { createProfilesController } from "../features/profiles/profiles-controller.js";
+import { createSectionsController } from "../features/sections/sections-controller.js";
+import { createSelectionController } from "../features/sections/selection-controller.js";
+import { createTracksController } from "../features/tracks/tracks-controller.js";
+import { createWaveform } from "../shared/waveform.js";
 
 const audio = elements.audio;
 
@@ -27,7 +28,6 @@ const waveform = createWaveform({
 });
 
 selectionController = createSelectionController({
-  audio,
   waveform,
   renderSectionList: () => sectionsController.renderSectionList(),
 });
@@ -88,14 +88,6 @@ function bindEvents() {
   elements.trackSelect.addEventListener("change", (event) => {
     const nextIndex = Number(event.target.value);
     void tracksController.selectTrackByIndex(nextIndex);
-  });
-
-  elements.markA.addEventListener("click", () => {
-    selectionController.setSelectionMarker("start");
-  });
-
-  elements.markB.addEventListener("click", () => {
-    selectionController.setSelectionMarker("end");
   });
 
   elements.saveSection.addEventListener("click", () => {

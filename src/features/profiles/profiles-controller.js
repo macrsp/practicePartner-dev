@@ -1,14 +1,14 @@
 /**
  * @role controller
- * @owns default-profile bootstrap, profile creation, profile refresh, profile selection state transitions
+ * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
  * @not-owns section logic, track logic, or direct IndexedDB schema management
  * @notes This controller may trigger section refreshes after profile changes.
  */
 
-import { DEFAULT_PROFILE_NAME } from "./constants.js";
-import { addProfile, getAllProfiles } from "./db.js";
-import { state } from "./state.js";
-import { renderProfiles } from "./ui.js";
+import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
+import { addProfile, getAllProfiles } from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { renderProfiles } from "./profiles-ui.js";
 
 export function createProfilesController({ refreshSections, handleError }) {
   async function ensureDefaultProfile() {

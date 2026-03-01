@@ -1,13 +1,14 @@
 /**
  * @role controller
- * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, waveform playback sync
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
  * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
-import { state } from "./state.js";
-import { elements, renderTracks, setSpeedDisplay, setTrackCount } from "./ui.js";
-import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "./utils.js";
+import { state } from "../../app/state.js";
+import { elements } from "../../shared/shell-ui.js";
+import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
+import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
 import {
   getRememberedMusicFolder,
   rememberLastTrackName,

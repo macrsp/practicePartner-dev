@@ -1,11 +1,11 @@
 /**
  * @role persistence-layer
- * @owns IndexedDB opening, upgrades, transactions, and typed store helpers
+ * @owns IndexedDB opening, upgrades, transactions, and shared store helpers
  * @not-owns business rules, UI updates, or controller orchestration
  * @notes Preserve compatibility with existing user data whenever possible.
  */
 
-import { DB_NAME, DB_VERSION, STORES } from "./constants.js";
+import { DB_NAME, DB_VERSION, STORES } from "../shared/constants.js";
 
 let dbPromise = null;
 
@@ -48,6 +48,13 @@ export function openDatabase() {
         });
       }
 
+      const activitiesStore = database.objectStoreNames.contains(STORES.ACTIVITIES)
+        ? transaction.objectStore(STORES.ACTIVITIES)
+        : database.createObjectStore(STORES.ACTIVITIES, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
       if (!profilesStore.indexNames.contains("byName")) {
         profilesStore.createIndex("byName", "name", { unique: false });
       }
@@ -65,6 +72,16 @@ export function openDatabase() {
       if (!playsStore.indexNames.contains("bySectionId")) {
         playsStore.createIndex("bySectionId", "sectionId", { unique: false });
       }
+
+      if (!activitiesStore.indexNames.contains("byProfileId")) {
+        activitiesStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!activitiesStore.indexNames.contains("byProfileAndTargetType")) {
+        activitiesStore.createIndex("byProfileAndTargetType", ["profileId", "targetType"], {
+          unique: false,
+        });
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -74,7 +91,7 @@ export function openDatabase() {
   return dbPromise;
 }
 
-function runRequest(storeName, mode, action) {
+export function runRequest(storeName, mode, action) {
   return openDatabase().then(
     (database) =>
       new Promise((resolve, reject) => {

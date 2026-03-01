@@ -1,18 +1,19 @@
 /**
  * @role shared-constants
- * @owns database names, schema versions, store names, settings keys, default constants
+ * @owns database names, schema versions, store names, settings keys, and shared feature constants
  * @not-owns runtime state, persistence behavior, or UI logic
  * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
  */
 
 export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 export const STORES = {
   PROFILES: "profiles",
   SECTIONS: "sections",
   PLAYS: "plays",
   SETTINGS: "settings",
+  ACTIVITIES: "activities",
 };
 
 export const SETTINGS_KEYS = {
@@ -31,3 +32,9 @@ export const SUPPORTED_AUDIO_EXTENSIONS = [
   ".ogg",
   ".flac",
 ];
+
+export const ACTIVITY_TARGET_TYPES = {
+  TRACK: "track",
+  SECTION: "section",
+  CUSTOM: "custom",
+};
