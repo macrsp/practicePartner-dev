@@ -1,7 +1,7 @@
 # @role workflow
 # @owns regeneration and commit-back of repo-context.xml on non-main branch updates
 # @not-owns application runtime behavior or repository architecture rules
-# @notes No logic change required for header-driven ownership; this workflow already republishes the instruction file and source files through Repomix.
+# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
 
 name: Update Repo Context
 
@@ -38,10 +38,22 @@ jobs:
       - name: Generate repo context
         run: npx --yes repomix@1.11.1 --config repomix.config.json
 
+      - name: Compute safe artifact name
+        shell: bash
+        run: |
+          raw_ref="${GITHUB_REF_NAME}"
+          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+
+          if [ -z "$safe_ref" ]; then
+            safe_ref="unnamed-ref"
+          fi
+
+          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+
       - name: Upload repo context artifact
         uses: actions/upload-artifact@v4
         with:
-          name: repo-context-${{ github.ref_name }}
+          name: repo-context-${{ env.safe_ref }}
           path: repo-context.xml
 
       - name: Commit updated repo context to branch
