@@ -1,7 +1,7 @@
 /**
  * @role controller
- * @owns section CRUD, focused-section navigation, adaptive play, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, or waveform rendering internals
+ * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
 
@@ -16,7 +16,6 @@ import { state } from "../../app/state.js";
 import { elements } from "../../shared/shell-ui.js";
 import {
   calculateMastery,
-  chooseAdaptiveSection,
   createSectionLabel,
   normalizeSectionRecord,
   sortSections,
@@ -29,6 +28,7 @@ export function createSectionsController({
   refreshSelectionUi,
   refreshMasteryUi,
   syncPlaybackUi,
+  renderActivityList,
   handleError,
 }) {
   async function refreshSections() {
@@ -37,6 +37,7 @@ export function createSectionsController({
       state.sections = [];
       renderSectionList();
       refreshMasteryUi();
+      renderActivityList();
       return;
     }
 
@@ -53,6 +54,7 @@ export function createSectionsController({
 
     renderSectionList();
     refreshMasteryUi();
+    renderActivityList();
   }
 
   function getVisibleSections() {
@@ -218,25 +220,6 @@ export function createSectionsController({
     }
   }
 
-  async function playAdaptiveSection() {
-    try {
-      if (!state.allSections.length) {
-        window.alert("There are no saved sections for this profile yet.");
-        return;
-      }
-
-      const nextSection = chooseAdaptiveSection(state.allSections);
-
-      if (!nextSection) {
-        return;
-      }
-
-      await playSectionById(nextSection.id);
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
   async function handleAudioBoundary() {
     if (!state.currentPlayingSectionId) {
       return;
@@ -333,7 +316,6 @@ export function createSectionsController({
     saveSelectionAsSection,
     focusSection,
     playSectionById,
-    playAdaptiveSection,
     handleAudioBoundary,
     removeSection,
   };

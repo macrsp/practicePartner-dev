@@ -17,7 +17,7 @@
     <header class="page-header">
       <h1>Suzuki Practice Partner</h1>
       <p class="small">
-        Waveform-driven section practice with profiles, repeat tracking, and adaptive playback.
+        Waveform-driven section practice with profiles, repeat tracking, and reusable activity shortcuts.
       </p>
     </header>
 
@@ -46,7 +46,6 @@
       </div>
 
       <div class="row">
-        <button id="adaptivePlay" type="button">Adaptive Next</button>
         <label class="checkbox-label" for="loopToggle">
           <input type="checkbox" id="loopToggle" />
           Loop section
@@ -78,6 +77,21 @@
         </div>
       </div>
       <div id="sectionList" class="section-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Activities</h2>
+          <p id="activitySummary" class="small">Select a profile to manage reusable activities.</p>
+        </div>
+        <div class="section-actions">
+          <button id="addTrackActivity" type="button" class="secondary">Add Current Track</button>
+          <button id="addSectionActivity" type="button" class="secondary">Add Focused Section</button>
+          <button id="addCustomActivity" type="button">Add Custom Activity</button>
+        </div>
+      </div>
+      <div id="activityList" class="section-list"></div>
     </section>
   </div>
 

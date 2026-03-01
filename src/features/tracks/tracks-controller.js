@@ -1,7 +1,7 @@
 /**
  * @role controller
  * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
- * @not-owns section CRUD, profile management, or low-level IndexedDB helpers
+ * @not-owns section CRUD, activity CRUD, profile management, or low-level IndexedDB helpers
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
@@ -21,6 +21,7 @@ export function createTracksController({
   refreshSelectionUi,
   renderSectionList,
   refreshMasteryUi,
+  renderActivityList,
   handleError,
 }) {
   async function restoreRememberedFolder() {
@@ -174,6 +175,7 @@ export function createTracksController({
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
+    renderActivityList();
   }
 
   function clearCurrentTrack() {
@@ -192,6 +194,7 @@ export function createTracksController({
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
+    renderActivityList();
   }
 
   async function loadAudioFile(file) {

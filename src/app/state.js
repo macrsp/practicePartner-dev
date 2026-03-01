@@ -25,4 +25,5 @@ export const state = {
   currentPlayingSectionId: null,
 
   activities: [],
+  selectedActivityId: null,
 };

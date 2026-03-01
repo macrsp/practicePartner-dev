@@ -1,8 +1,8 @@
 /**
  * @role controller
  * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
- * @not-owns section logic, track logic, or direct IndexedDB schema management
- * @notes This controller may trigger section refreshes after profile changes.
+ * @not-owns section logic, track logic, activity logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section and activity refreshes after profile changes.
  */
 
 import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
@@ -10,7 +10,7 @@ import { addProfile, getAllProfiles } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
 import { renderProfiles } from "./profiles-ui.js";
 
-export function createProfilesController({ refreshSections, handleError }) {
+export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
   async function ensureDefaultProfile() {
     const profiles = await getAllProfiles();
 
@@ -25,8 +25,9 @@ export function createProfilesController({ refreshSections, handleError }) {
 
     if (!profiles.length) {
       state.currentProfileId = null;
+      state.selectedActivityId = null;
       renderProfiles([], null);
-      await refreshSections();
+      await Promise.all([refreshSections(), refreshActivities()]);
       return;
     }
 
@@ -35,7 +36,7 @@ export function createProfilesController({ refreshSections, handleError }) {
     }
 
     renderProfiles(profiles, state.currentProfileId);
-    await refreshSections();
+    await Promise.all([refreshSections(), refreshActivities()]);
   }
 
   async function createProfile() {
@@ -49,6 +50,7 @@ export function createProfilesController({ refreshSections, handleError }) {
 
       const profileId = await addProfile({ name: trimmed });
       state.currentProfileId = profileId;
+      state.selectedActivityId = null;
       await refreshProfiles();
     } catch (error) {
       handleError(error);
@@ -59,6 +61,7 @@ export function createProfilesController({ refreshSections, handleError }) {
     state.currentProfileId = profileId;
     state.focusedSectionId = null;
     state.currentPlayingSectionId = null;
+    state.selectedActivityId = null;
   }
 
   return {
