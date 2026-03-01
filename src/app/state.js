@@ -6,9 +6,6 @@
  */
 
 export const state = {
-  currentRoute: "workspace",
-  routeContext: null,
-
   profiles: [],
   currentProfileId: null,
 
@@ -28,10 +25,4 @@ export const state = {
   currentPlayingSectionId: null,
 
   activities: [],
-  todayListItems: [],
-  currentPracticeIndex: null,
-  practiceSelection: {
-    start: null,
-    end: null,
-  },
 };

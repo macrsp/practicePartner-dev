@@ -42,22 +42,15 @@ export function openDatabase() {
             autoIncrement: true,
           });
 
-      const settingsStore = database.objectStoreNames.contains(STORES.SETTINGS)
-        ? transaction.objectStore(STORES.SETTINGS)
-        : database.createObjectStore(STORES.SETTINGS, {
-            keyPath: "key",
-          });
+      if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+        database.createObjectStore(STORES.SETTINGS, {
+          keyPath: "key",
+        });
+      }
 
       const activitiesStore = database.objectStoreNames.contains(STORES.ACTIVITIES)
         ? transaction.objectStore(STORES.ACTIVITIES)
         : database.createObjectStore(STORES.ACTIVITIES, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-
-      const todayListStore = database.objectStoreNames.contains(STORES.TODAY_LIST)
-        ? transaction.objectStore(STORES.TODAY_LIST)
-        : database.createObjectStore(STORES.TODAY_LIST, {
             keyPath: "id",
             autoIncrement: true,
           });
@@ -89,18 +82,6 @@ export function openDatabase() {
           unique: false,
         });
       }
-
-      if (!todayListStore.indexNames.contains("byProfileId")) {
-        todayListStore.createIndex("byProfileId", "profileId", { unique: false });
-      }
-
-      if (!todayListStore.indexNames.contains("byProfileAndOrder")) {
-        todayListStore.createIndex("byProfileAndOrder", ["profileId", "sortOrder"], {
-          unique: false,
-        });
-      }
-
-      void settingsStore;
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -153,12 +134,6 @@ export function addProfile(profile) {
 export function getSectionsByProfile(profileId) {
   return runRequest(STORES.SECTIONS, "readonly", (store) =>
     store.index("byProfileId").getAll(IDBKeyRange.only(profileId)),
-  );
-}
-
-export function getSectionsByProfileAndTrack(profileId, trackName) {
-  return runRequest(STORES.SECTIONS, "readonly", (store) =>
-    store.index("byProfileAndTrack").getAll(IDBKeyRange.only([profileId, trackName])),
   );
 }
 

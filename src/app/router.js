@@ -14,28 +14,3 @@ export const ROUTES = {
 };
 
 const VALID_ROUTES = new Set(Object.values(ROUTES));
-
-export function createRouter({ initialRoute = ROUTES.WORKSPACE, onRouteChange } = {}) {
-  if (!VALID_ROUTES.has(initialRoute)) {
-    throw new Error(`Unknown route "${initialRoute}".`);
-  }
-
-  state.currentRoute = initialRoute;
-  state.routeContext = null;
-
-  function navigate(route, routeContext = null) {
-    if (!VALID_ROUTES.has(route)) {
-      throw new Error(`Unknown route "${route}".`);
-    }
-
-    state.currentRoute = route;
-    state.routeContext = routeContext;
-    onRouteChange?.({ route, routeContext });
-  }
-
-  return {
-    navigate,
-    getCurrentRoute: () => state.currentRoute,
-    getRouteContext: () => state.routeContext,
-  };
-}

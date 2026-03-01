@@ -14,7 +14,6 @@ export const STORES = {
   PLAYS: "plays",
   SETTINGS: "settings",
   ACTIVITIES: "activities",
-  TODAY_LIST: "todayList",
 };
 
 export const SETTINGS_KEYS = {

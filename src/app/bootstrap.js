@@ -6,7 +6,6 @@
  */
 
 import { openDatabase } from "../persistence/db.js";
-import { createRouter } from "./router.js";
 import { elements } from "../shared/shell-ui.js";
 import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
 import { createProfilesController } from "../features/profiles/profiles-controller.js";
@@ -20,8 +19,6 @@ const audio = elements.audio;
 let selectionController;
 let sectionsController;
 let tracksController;
-
-createRouter();
 
 const waveform = createWaveform({
   mountEl: elements.waveformMount,
