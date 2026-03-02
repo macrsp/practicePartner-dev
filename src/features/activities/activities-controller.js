@@ -170,7 +170,7 @@ export function createActivitiesController({
       }
 
       const name = await showPrompt("Activity name:", {
-        title: "Create Song Activity",
+        title: "Create Track Activity",
         defaultValue: state.currentTrack.name,
       });
       const trimmed = name?.trim();
@@ -374,7 +374,7 @@ function getWorkspaceActivitySummary({ hasProfile, hasTrack, currentSection }) {
   }
 
   if (!hasTrack) {
-    return "Pick a song to create a song activity.";
+    return "Pick a track to create a track activity.";
   }
 
   if (currentSection) {

@@ -1,6 +1,6 @@
 /**
  * @role renderer
- * @owns current-plan summary messaging and current-plan item list rendering for the planner view
+ * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
  * @not-owns plan persistence, plan mutation rules, or activity launch behavior
  * @notes Keep this file presentation-only.
  */
@@ -10,6 +10,8 @@ import { describeActivity, getActivityUseState } from "../activities/activities-
 export function renderPlan({
   elements,
   currentProfileId,
+  plans,
+  currentPlanId,
   plan,
   planItems,
   activitiesById,
@@ -18,6 +20,12 @@ export function renderPlan({
   onUseActivity,
   onRemoveItem,
 }) {
+  renderPlanPicker(elements, {
+    currentProfileId,
+    plans,
+    currentPlanId,
+  });
+
   elements.planName.textContent = plan?.name ?? "Current Plan";
   elements.planList.innerHTML = "";
 
@@ -26,20 +34,18 @@ export function renderPlan({
 
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "Select a profile to create and manage the current practice plan.";
+    empty.textContent = "Select a profile to create, load, and manage practice plans.";
     elements.planList.appendChild(empty);
     return;
   }
 
-  elements.planSummary.textContent = planItems.length
-    ? `${planItems.length} activity item${planItems.length === 1 ? "" : "s"} in the current plan.`
-    : "No activities in the current plan yet.";
+  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
 
   if (!planItems.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.textContent =
-      "Use Add to Plan from the activity library on this page to build the current practice plan.";
+      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
     elements.planList.appendChild(empty);
     return;
   }
@@ -109,4 +115,48 @@ export function renderPlan({
 
     elements.planList.appendChild(row);
   });
+}
+
+function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
+  elements.planSelect.innerHTML = "";
+
+  if (!currentProfileId) {
+    const option = document.createElement("option");
+    option.textContent = "Select a profile";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  if (!plans.length) {
+    const option = document.createElement("option");
+    option.textContent = "No plans";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  plans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = String(plan.id);
+    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
+
+    if (plan.id === currentPlanId) {
+      option.selected = true;
+    }
+
+    elements.planSelect.appendChild(option);
+  });
+
+  elements.planSelect.disabled = false;
+}
+
+function createPlanSummary(planItemCount, planCount) {
+  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
+  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
+  return `${itemText} • ${planText}.`;
 }

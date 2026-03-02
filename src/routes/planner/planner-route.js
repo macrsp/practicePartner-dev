@@ -2,7 +2,7 @@
  * @role route-renderer
  * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
  * @not-owns shell chrome, activity business rules, or plan persistence rules
- * @notes This route hosts the current plan surface and the reusable activity library; contextual track/section creation lives in the workspace.
+ * @notes This route hosts saved-plan loading, current-plan composition, and the activity library.
  */
 
 export function renderPlannerRoute({ mountEl, services }) {
@@ -14,7 +14,7 @@ export function renderPlannerRoute({ mountEl, services }) {
         <div>
           <h2>Planner</h2>
           <p class="small">
-            Review the current practice plan, browse reusable activities, and add custom references.
+            Load saved plans, organize the current plan, and browse reusable activities.
           </p>
         </div>
       </div>
@@ -26,8 +26,26 @@ export function renderPlannerRoute({ mountEl, services }) {
           <div>
             <h2>Current Plan</h2>
             <p class="small">
-              Organize the order of practice using reusable activities from this profile.
+              Choose a saved plan to load it as the current working plan for this profile.
             </p>
+          </div>
+        </div>
+
+        <div class="planner-summary-bar planner-plan-toolbar">
+          <div class="planner-field-group">
+            <label for="plannerPlanSelect">Loaded Plan</label>
+            <select
+              id="plannerPlanSelect"
+              class="planner-plan-select"
+              data-planner-el="planSelect"
+              aria-label="Loaded Plan"
+            ></select>
+          </div>
+
+          <div class="section-actions">
+            <button type="button" class="secondary" data-planner-el="savePlanAs">
+              Save as New Plan
+            </button>
           </div>
         </div>
 
@@ -46,7 +64,7 @@ export function renderPlannerRoute({ mountEl, services }) {
           <div>
             <h2>Activity Library</h2>
             <p class="small">
-              Reusable activities stay here. Create song and section activities from the Workspace.
+              Reusable activities live here. Create track and section activities from the Workspace.
             </p>
           </div>
 
@@ -70,10 +88,20 @@ export function renderPlannerRoute({ mountEl, services }) {
 
   const elements = getPlannerElements(routeRoot);
 
+  const handlePlanChange = (event) => {
+    void services.plansController.setCurrentPlanId(Number(event.target.value));
+  };
+
+  const handleSavePlanAs = () => {
+    void services.plansController.saveCurrentPlanAsNew();
+  };
+
   const handleAddCustomActivity = () => {
     void services.activitiesController.createCustomActivity();
   };
 
+  elements.planSelect.addEventListener("change", handlePlanChange);
+  elements.savePlanAs.addEventListener("click", handleSavePlanAs);
   elements.addCustomActivity.addEventListener("click", handleAddCustomActivity);
 
   services.plansController.attachPlanner(elements);
@@ -81,6 +109,8 @@ export function renderPlannerRoute({ mountEl, services }) {
 
   return {
     cleanup() {
+      elements.planSelect.removeEventListener("change", handlePlanChange);
+      elements.savePlanAs.removeEventListener("click", handleSavePlanAs);
       elements.addCustomActivity.removeEventListener("click", handleAddCustomActivity);
 
       services.activitiesController.detachPlanner();
@@ -91,6 +121,8 @@ export function renderPlannerRoute({ mountEl, services }) {
 
 export function getPlannerElements(routeRoot) {
   return {
+    planSelect: getRequiredElement(routeRoot, "planSelect"),
+    savePlanAs: getRequiredElement(routeRoot, "savePlanAs"),
     planName: getRequiredElement(routeRoot, "planName"),
     planSummary: getRequiredElement(routeRoot, "planSummary"),
     planList: getRequiredElement(routeRoot, "planList"),
