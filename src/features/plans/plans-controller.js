@@ -15,6 +15,7 @@ import {
   getPlanItemsByPlanId,
   getPlansByProfile,
   updatePlan,
+  updatePlanItem,
 } from "../../persistence/plan-store.js";
 import { renderPlan } from "./plans-ui.js";
 
@@ -108,6 +109,9 @@ export function createPlansController({ activateActivity, handleError } = {}) {
       onRemoveItem: (planItemId) => {
         void removePlanItem(planItemId);
       },
+      onReorderItem: (draggedPlanItemId, targetPlanItemId, { before } = {}) => {
+        void reorderPlanItem(draggedPlanItemId, targetPlanItemId, { before });
+      },
     });
   }
 
@@ -155,6 +159,71 @@ export function createPlansController({ activateActivity, handleError } = {}) {
       }
 
       await refreshPlanItems();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function reorderPlanItem(draggedPlanItemId, targetPlanItemId, { before = true } = {}) {
+    try {
+      if (!state.currentPlanId) {
+        return;
+      }
+
+      if (draggedPlanItemId === targetPlanItemId) {
+        return;
+      }
+
+      const currentPlan = getCurrentPlan();
+
+      const sorted = [...state.planItems].sort(sortPlanItems);
+      const draggedIndex = sorted.findIndex((item) => item.id === draggedPlanItemId);
+      const targetIndex = sorted.findIndex((item) => item.id === targetPlanItemId);
+
+      if (draggedIndex === -1 || targetIndex === -1) {
+        return;
+      }
+
+      const [dragged] = sorted.splice(draggedIndex, 1);
+
+      // Re-find the target index after removal.
+      const nextTargetIndex = sorted.findIndex((item) => item.id === targetPlanItemId);
+      const insertIndex = Math.max(
+        0,
+        Math.min(sorted.length, nextTargetIndex + (before ? 0 : 1)),
+      );
+
+      sorted.splice(insertIndex, 0, dragged);
+
+      const now = Date.now();
+      const updates = [];
+      const nextItems = sorted.map((item, index) => {
+        const nextPosition = index;
+
+        if ((item.position ?? Number.MAX_SAFE_INTEGER) === nextPosition) {
+          return item;
+        }
+
+        const updated = {
+          ...item,
+          position: nextPosition,
+          updatedAt: now,
+        };
+
+        updates.push(updatePlanItem(updated));
+        return updated;
+      });
+
+      if (updates.length) {
+        await Promise.all(updates);
+        state.planItems = nextItems.sort(sortPlanItems);
+
+        if (currentPlan) {
+          await touchCurrentPlan(currentPlan);
+        }
+
+        await refreshPlanItems();
+      }
     } catch (error) {
       handleError?.(error);
     }
@@ -326,6 +395,7 @@ export function createPlansController({ activateActivity, handleError } = {}) {
     renderPlanList,
     addActivityToCurrentPlan,
     removePlanItem,
+    reorderPlanItem,
     setCurrentPlanId,
     saveCurrentPlanAsNew,
   };
