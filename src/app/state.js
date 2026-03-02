@@ -14,7 +14,6 @@ export const state = {
   trackStatusText: "No folder selected.",
   tracks: [],
   currentTrack: null,
-  currentTrackUrl: null,
   playbackRate: 1,
   loopEnabled: false,
 

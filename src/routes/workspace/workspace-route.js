@@ -1,12 +1,12 @@
 /**
  * @role route-renderer
  * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
- * @not-owns shell chrome, track/section business logic, or persistent global transport
- * @notes This route renders workspace-owned UI and contextual activity creation shortcuts without showing the full activity library.
+ * @not-owns shell chrome, track/section business logic, or shell-level playback UI
+ * @notes This route renders workspace-owned source selection, waveform-player playback, and contextual activity creation shortcuts without showing the full activity library.
  */
 
 import { state } from "../../app/state.js";
-import { createWaveform } from "../../shared/waveform.js";
+import { createWaveformPlayer } from "../../shared/waveform.js";
 
 export async function renderWorkspaceRoute({ mountEl, services }) {
   const routeRoot = document.createElement("div");
@@ -17,7 +17,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
         <div>
           <h2>Workspace</h2>
           <p class="small">
-            Load a track, focus a saved section, and practice from the shared transport.
+            Load a track, focus a saved section, and practice directly from the waveform player.
           </p>
         </div>
       </div>
@@ -29,7 +29,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
           <div class="section-header section-header-compact">
             <div>
               <h2>Track Setup</h2>
-              <p class="small">Choose a folder, load tracks, and set playback speed.</p>
+              <p class="small">Choose a folder and select a track.</p>
             </div>
           </div>
 
@@ -46,58 +46,33 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
               aria-label="Track"
             ></select>
           </div>
-
-          <div class="row">
-            <label for="workspaceSpeed">Speed</label>
-            <input
-              id="workspaceSpeed"
-              data-workspace-el="speed"
-              type="range"
-              min="0.5"
-              max="1.5"
-              step="0.05"
-              value="${String(state.playbackRate)}"
-            />
-            <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
-
-            <label class="checkbox-label" for="workspaceLoopToggle">
-              <input
-                id="workspaceLoopToggle"
-                data-workspace-el="loopToggle"
-                type="checkbox"
-                ${state.loopEnabled ? "checked" : ""}
-              />
-              Loop focused section
-            </label>
-          </div>
         </div>
 
         <div class="panel-block">
           <div class="section-header section-header-compact">
             <div>
-              <h2>Selection & Practice</h2>
-              <p class="small">Adjust the current range, review mastery, and save sections.</p>
+              <h2>Waveform Player</h2>
+              <p class="small">Click to seek, drag to mark A/B, and control playback here.</p>
+            </div>
+          </div>
+
+          <div data-workspace-el="playerMount"></div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Selection & Sections</h2>
+              <p class="small">Review mastery and save the current waveform selection.</p>
             </div>
           </div>
 
           <div class="row">
-            <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
             <div class="mastery-pill">
               Mastery <span data-workspace-el="masteryDisplay">—</span>
             </div>
             <button type="button" data-workspace-el="saveSection">Save Section</button>
           </div>
-        </div>
-
-        <div class="panel-block">
-          <div class="section-header section-header-compact">
-            <div>
-              <h2>Waveform</h2>
-              <p class="small">Drag to define the active A/B range on the current track.</p>
-            </div>
-          </div>
-
-          <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
         </div>
       </section>
 
@@ -143,16 +118,27 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
   mountEl.replaceChildren(routeRoot);
 
   const elements = getWorkspaceElements(routeRoot);
-  const waveform = createWaveform({
-    mountEl: elements.waveformMount,
+  const player = createWaveformPlayer({
+    mountEl: elements.playerMount,
+    initialPlaybackRate: state.playbackRate,
+    initialLoopEnabled: state.loopEnabled,
     onSelectionChange: (selection) => {
       services.selectionController.handleWaveformSelectionChange(selection);
+    },
+    onPlaybackRateChange: (value) => {
+      services.tracksController.setSpeed(value);
+    },
+    onLoopChange: (enabled) => {
+      state.loopEnabled = enabled;
+    },
+    onPlaybackBoundsComplete: () => {
+      void services.sectionsController.handlePlaybackBoundsComplete();
     },
   });
 
   const workspace = {
     ...elements,
-    waveform,
+    player,
   };
 
   const handlePickFolder = () => {
@@ -168,14 +154,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
     void services.sectionsController.saveSelectionAsSection();
   };
 
-  const handleSpeedChange = (event) => {
-    services.tracksController.setSpeed(Number(event.target.value));
-  };
-
-  const handleLoopChange = (event) => {
-    state.loopEnabled = Boolean(event.target.checked);
-  };
-
   const handleCreateTrackActivity = () => {
     void services.activitiesController.createTrackActivityFromCurrentTrack();
   };
@@ -187,8 +165,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
   elements.pickFolder.addEventListener("click", handlePickFolder);
   elements.trackSelect.addEventListener("change", handleTrackChange);
   elements.saveSection.addEventListener("click", handleSaveSection);
-  elements.speed.addEventListener("input", handleSpeedChange);
-  elements.loopToggle.addEventListener("change", handleLoopChange);
   elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
   elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
 
@@ -202,8 +178,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
       elements.pickFolder.removeEventListener("click", handlePickFolder);
       elements.trackSelect.removeEventListener("change", handleTrackChange);
       elements.saveSection.removeEventListener("click", handleSaveSection);
-      elements.speed.removeEventListener("input", handleSpeedChange);
-      elements.loopToggle.removeEventListener("change", handleLoopChange);
       elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
       elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
 
@@ -211,7 +185,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
       services.tracksController.detachWorkspace();
       services.sectionsController.detachWorkspace();
       services.selectionController.detachWorkspace();
-      waveform.destroy();
+      player.destroy();
     },
   };
 }
@@ -221,16 +195,12 @@ export function getWorkspaceElements(routeRoot) {
     pickFolder: getRequiredElement(routeRoot, "pickFolder"),
     trackSelect: getRequiredElement(routeRoot, "trackSelect"),
     trackCount: getRequiredElement(routeRoot, "trackCount"),
-    speed: getRequiredElement(routeRoot, "speed"),
-    speedVal: getRequiredElement(routeRoot, "speedVal"),
-    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
-    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
     masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
     saveSection: getRequiredElement(routeRoot, "saveSection"),
     activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
     createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
     createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
-    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
+    playerMount: getRequiredElement(routeRoot, "playerMount"),
     sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
     sectionList: getRequiredElement(routeRoot, "sectionList"),
   };

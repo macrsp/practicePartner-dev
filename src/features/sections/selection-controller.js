@@ -1,12 +1,12 @@
 /**
  * @role controller
- * @owns waveform-driven selection state, mastery display refresh, and selection display refresh
+ * @owns waveform-driven selection state, mastery display refresh, and player-selection refresh
  * @not-owns saved-section persistence, track loading, or profile management
  * @notes Keep this controller focused on selection semantics and related UI.
  */
 
 import { state } from "../../app/state.js";
-import { setMasteryDisplay, setSelectionDisplay } from "./sections-ui.js";
+import { setMasteryDisplay } from "./sections-ui.js";
 
 export function createSelectionController({ renderSectionList }) {
   let workspace = null;
@@ -26,8 +26,7 @@ export function createSelectionController({ renderSectionList }) {
       return;
     }
 
-    workspace.waveform.setSelection(state.selection);
-    setSelectionDisplay(workspace, state.selection.start, state.selection.end);
+    workspace.player.setSelection(state.selection);
   }
 
   function refreshMasteryUi() {
@@ -56,11 +55,6 @@ export function createSelectionController({ renderSectionList }) {
 
   function handleWaveformSelectionChange(selection) {
     state.selection = selection;
-
-    if (workspace) {
-      setSelectionDisplay(workspace, selection.start, selection.end);
-    }
-
     clearFocusedSectionForManualSelection();
   }
 

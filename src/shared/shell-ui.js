@@ -1,7 +1,7 @@
 /**
  * @role renderer-support
  * @owns persistent shell element lookup and shell-level navigation state
- * @not-owns route-owned element lookup, feature rendering logic, or application state transitions
+ * @not-owns route-owned element lookup, route-local playback UI, or application state transitions
  * @notes Keep this file limited to shell-level element access.
  */
 
@@ -22,7 +22,6 @@ export function getShellElements() {
     newProfile: getElement("newProfile"),
     workspaceNav: getElement("workspaceNav"),
     plannerNav: getElement("plannerNav"),
-    audio: getElement("audio"),
   };
 }
 

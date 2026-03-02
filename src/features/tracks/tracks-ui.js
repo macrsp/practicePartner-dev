@@ -1,7 +1,7 @@
 /**
  * @role renderer
- * @owns track-select rendering, track-count messaging, and speed display rendering
- * @not-owns track loading, folder permissions, or playback behavior
+ * @owns track-select rendering and track-count messaging
+ * @not-owns track loading, folder permissions, playback behavior, or waveform-player controls
  * @notes Keep this file presentation-only.
  */
 
@@ -33,8 +33,4 @@ export function renderTracks(elements, tracks, currentTrackName) {
 
 export function setTrackCount(elements, text) {
   elements.trackCount.textContent = text;
-}
-
-export function setSpeedDisplay(elements, value) {
-  elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
 }

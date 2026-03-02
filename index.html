@@ -2,7 +2,7 @@
 <!--
   @role document-shell
   @owns static shell markup, semantic structure, persistent app chrome, and script/style entrypoints
-  @not-owns route rendering, runtime behavior, or styling rules beyond structural classes and ids
+  @not-owns route rendering, route-local playback UI, or styling rules beyond structural classes and ids
   @notes Keep this file markup-only.
 -->
 <html lang="en">
@@ -32,19 +32,6 @@
         <select id="profileSelect" aria-label="Profile"></select>
         <button id="newProfile" type="button" class="secondary">New Profile</button>
       </div>
-    </section>
-
-    <section class="card global-transport">
-      <div class="section-header">
-        <div>
-          <h2>Transport</h2>
-          <p class="small">
-            Playback stays available while moving between the workspace and planner.
-          </p>
-        </div>
-      </div>
-
-      <audio id="audio" controls></audio>
     </section>
 
     <main id="routeMount"></main>
