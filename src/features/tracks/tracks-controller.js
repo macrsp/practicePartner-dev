@@ -1,12 +1,11 @@
 /**
  * @role controller
  * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
- * @not-owns section CRUD, activity CRUD, profile management, or low-level IndexedDB helpers
+ * @not-owns section CRUD, activity CRUD, plan CRUD, profile management, or low-level IndexedDB helpers
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
 import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
 import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
 import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
 import {
@@ -17,13 +16,31 @@ import {
 
 export function createTracksController({
   audio,
-  waveform,
   refreshSelectionUi,
   renderSectionList,
   refreshMasteryUi,
   renderActivityList,
+  renderPlanList,
   handleError,
 }) {
+  let workspace = null;
+
+  async function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    renderWorkspaceUi();
+
+    if (state.currentTrack && workspace?.waveform) {
+      await workspace.waveform.loadFile(state.currentTrack.file);
+      syncWaveformPlaybackPosition();
+    } else if (workspace?.waveform) {
+      workspace.waveform.clear();
+    }
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
   async function restoreRememberedFolder() {
     try {
       const remembered = await getRememberedMusicFolder();
@@ -47,7 +64,8 @@ export function createTracksController({
       showRememberedFolderStatus();
     } catch (error) {
       console.warn("Unable to restore remembered music folder.", error);
-      setTrackCount("No folder selected.");
+      state.trackStatusText = "No folder selected.";
+      renderWorkspaceUi();
     }
   }
 
@@ -111,9 +129,11 @@ export function createTracksController({
 
     nextTracks.sort(compareByName);
     state.tracks = nextTracks;
+    state.trackStatusText = summarizeTrackCount(nextTracks.length);
 
-    renderTracks(state.tracks, null);
-    setTrackCount(summarizeTrackCount(nextTracks.length));
+    renderWorkspaceUi();
+    renderActivityList();
+    renderPlanList();
 
     if (!nextTracks.length) {
       clearCurrentTrack();
@@ -147,10 +167,11 @@ export function createTracksController({
     const folderName = state.currentFolderName
       ? `Remembered folder: ${state.currentFolderName}.`
       : "Folder remembered.";
-    setTrackCount(`${folderName} Click Pick Music Folder to reconnect.`);
+    state.trackStatusText = `${folderName} Click Pick Music Folder to reconnect.`;
+    renderWorkspaceUi();
   }
 
-  async function selectTrackByIndex(index, { preserveSelection = false } = {}) {
+  async function selectTrackByIndex(index, { preserveSelection = false, cueAtTime = null } = {}) {
     const track = state.tracks[index];
 
     if (!track) {
@@ -166,16 +187,26 @@ export function createTracksController({
       state.focusedSectionId = null;
     }
 
-    renderTracks(state.tracks, track.name);
+    renderWorkspaceUi();
 
-    await Promise.all([loadAudioFile(track.file), waveform.loadFile(track.file)]);
+    await loadAudioFile(track.file);
+
+    if (workspace?.waveform) {
+      await workspace.waveform.loadFile(track.file);
+    }
+
     await rememberLastTrackName(track.name);
-    syncWaveformPlaybackPosition();
 
+    if (Number.isFinite(cueAtTime)) {
+      audio.currentTime = Math.max(0, cueAtTime);
+    }
+
+    syncWaveformPlaybackPosition();
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
     renderActivityList();
+    renderPlanList();
   }
 
   function clearCurrentTrack() {
@@ -189,12 +220,16 @@ export function createTracksController({
     audio.removeAttribute("src");
     audio.load();
 
-    waveform.clear();
-    renderTracks(state.tracks, null);
+    if (workspace?.waveform) {
+      workspace.waveform.clear();
+    }
+
+    renderWorkspaceUi();
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
     renderActivityList();
+    renderPlanList();
   }
 
   async function loadAudioFile(file) {
@@ -226,7 +261,7 @@ export function createTracksController({
       audio.load();
     });
 
-    audio.playbackRate = Number(elements.speed.value);
+    audio.playbackRate = state.playbackRate;
   }
 
   function releaseCurrentTrackUrl() {
@@ -239,15 +274,37 @@ export function createTracksController({
   }
 
   function setSpeed(value) {
+    state.playbackRate = value;
     audio.playbackRate = value;
-    setSpeedDisplay(value);
+
+    if (workspace) {
+      workspace.speed.value = String(value);
+      setSpeedDisplay(workspace, value);
+    }
   }
 
   function syncWaveformPlaybackPosition() {
-    waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
+    if (!workspace?.waveform) {
+      return;
+    }
+
+    workspace.waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
+  }
+
+  function renderWorkspaceUi() {
+    if (!workspace) {
+      return;
+    }
+
+    renderTracks(workspace, state.tracks, state.currentTrack?.name ?? null);
+    setTrackCount(workspace, state.trackStatusText);
+    workspace.speed.value = String(state.playbackRate);
+    setSpeedDisplay(workspace, state.playbackRate);
   }
 
   return {
+    attachWorkspace,
+    detachWorkspace,
     restoreRememberedFolder,
     pickMusicFolder,
     selectTrackByIndex,

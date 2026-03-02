@@ -5,18 +5,18 @@
  * @notes Keep this file presentation-only.
  */
 
-import { elements } from "../../shared/shell-ui.js";
 import { createSectionLabel, formatTime } from "../../shared/utils.js";
 
-export function setSelectionDisplay(start, end) {
+export function setSelectionDisplay(elements, start, end) {
   elements.abDisplay.textContent = `A ${formatTime(start)} • B ${formatTime(end)}`;
 }
 
-export function setMasteryDisplay(value) {
+export function setMasteryDisplay(elements, value) {
   elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
 }
 
 export function renderSections({
+  elements,
   sections,
   activeSectionId,
   currentTrackName,

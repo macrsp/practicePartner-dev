@@ -1,8 +1,8 @@
 /**
  * @role controller
- * @owns reusable-activity state refresh, CRUD orchestration, and workspace focus behavior for activity targets
- * @not-owns activity list rendering, track/section internals, or low-level IndexedDB helpers
- * @notes Keep this controller focused on activity CRUD, activity-list refresh, and workspace activity use flows.
+ * @owns reusable-activity state refresh, CRUD orchestration, planner library rendering, and activity launch-to-workspace behavior
+ * @not-owns track/section internals, plan persistence, or low-level IndexedDB helpers
+ * @notes Keep this controller focused on activity CRUD, planner-library refresh, and workspace launch flows.
  */
 
 import { state } from "../../app/state.js";
@@ -13,7 +13,7 @@ import {
   updateActivity,
 } from "../../persistence/activity-store.js";
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
+import { showConfirm, showPrompt } from "../../shared/dialog.js";
 import { createSectionLabel } from "../../shared/utils.js";
 import { renderActivities } from "./activities-ui.js";
 
@@ -21,14 +21,29 @@ const VALID_TARGET_TYPES = new Set(Object.values(ACTIVITY_TARGET_TYPES));
 
 export function createActivitiesController({
   selectTrackByIndex,
-  focusSection,
+  cueSectionById,
+  navigateToWorkspace,
+  addActivityToCurrentPlan,
+  renderPlanList,
   handleError,
 } = {}) {
+  let planner = null;
+
+  function attachPlanner(nextPlanner) {
+    planner = nextPlanner;
+    renderActivityList();
+  }
+
+  function detachPlanner() {
+    planner = null;
+  }
+
   async function refreshActivities() {
     if (!state.currentProfileId) {
       state.activities = [];
       state.selectedActivityId = null;
       renderActivityList();
+      renderPlanList?.();
       return [];
     }
 
@@ -40,13 +55,19 @@ export function createActivitiesController({
     }
 
     renderActivityList();
+    renderPlanList?.();
     return state.activities;
   }
 
   function renderActivityList() {
+    if (!planner) {
+      return;
+    }
+
     const sectionsById = new Map(state.allSections.map((section) => [section.id, section]));
 
     renderActivities({
+      elements: planner,
       currentProfileId: state.currentProfileId,
       activities: state.activities,
       selectedActivityId: state.selectedActivityId,
@@ -58,6 +79,11 @@ export function createActivitiesController({
       onDelete: (activityId) => {
         void removeActivity(activityId);
       },
+      onAddToPlan: addActivityToCurrentPlan
+        ? (activityId) => {
+            void addActivityToCurrentPlan(activityId);
+          }
+        : null,
     });
   }
 
@@ -80,6 +106,7 @@ export function createActivitiesController({
       await refreshActivities();
       state.selectedActivityId = activityId;
       renderActivityList();
+      renderPlanList?.();
       return activityId;
     } catch (error) {
       handleError?.(error);
@@ -216,7 +243,8 @@ export function createActivitiesController({
           );
         }
 
-        await selectTrackByIndex(trackIndex);
+        await selectTrackByIndex(trackIndex, { cueAtTime: 0 });
+        await navigateToWorkspace?.();
         renderActivityList();
         return;
       }
@@ -228,15 +256,13 @@ export function createActivitiesController({
           throw new Error("This activity references a saved section that no longer exists.");
         }
 
-        const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+        const prepared = await cueSectionById(section.id);
 
-        if (trackIndex === -1) {
-          throw new Error(
-            `Track "${section.trackName}" is not available in the currently selected folder.`,
-          );
+        if (!prepared) {
+          return;
         }
 
-        await focusSection(section.id);
+        await navigateToWorkspace?.();
         renderActivityList();
         return;
       }
@@ -272,11 +298,13 @@ export function createActivitiesController({
 
       await refreshActivities();
     } catch (error) {
-      handleError?.(error);
+      handleError(error);
     }
   }
 
   return {
+    attachPlanner,
+    detachPlanner,
     refreshActivities,
     renderActivityList,
     createActivity,

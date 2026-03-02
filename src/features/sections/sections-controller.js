@@ -1,7 +1,7 @@
 /**
  * @role controller
  * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
 
@@ -13,7 +13,6 @@ import {
   updateSection,
 } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
 import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
 import {
   calculateMastery,
@@ -30,8 +29,20 @@ export function createSectionsController({
   refreshMasteryUi,
   syncPlaybackUi,
   renderActivityList,
+  renderPlanList,
   handleError,
 }) {
+  let workspace = null;
+
+  function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    renderSectionList();
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
   async function refreshSections() {
     if (!state.currentProfileId) {
       state.allSections = [];
@@ -39,6 +50,7 @@ export function createSectionsController({
       renderSectionList();
       refreshMasteryUi();
       renderActivityList();
+      renderPlanList();
       return;
     }
 
@@ -56,6 +68,7 @@ export function createSectionsController({
     renderSectionList();
     refreshMasteryUi();
     renderActivityList();
+    renderPlanList();
   }
 
   function getVisibleSections() {
@@ -84,7 +97,12 @@ export function createSectionsController({
     const visibleSections = getVisibleSections();
     state.visibleSections = visibleSections;
 
+    if (!workspace) {
+      return;
+    }
+
     renderSections({
+      elements: workspace,
       sections: visibleSections,
       activeSectionId: getActiveVisibleSectionId(visibleSections),
       currentTrackName: state.currentTrack?.name ?? null,
@@ -147,38 +165,55 @@ export function createSectionsController({
       });
 
       state.focusedSectionId = sectionId;
+      state.currentPlayingSectionId = null;
       await refreshSections();
     } catch (error) {
       handleError(error);
     }
   }
 
-  async function focusSection(sectionId) {
+  async function focusSection(sectionId, { armForPlayback = false, cuePlayback = false } = {}) {
     try {
       const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
-        return;
+        return false;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return false;
       }
 
       state.focusedSectionId = section.id;
+      state.currentPlayingSectionId = armForPlayback ? section.id : null;
       state.selection = {
         start: section.start,
         end: section.end,
       };
 
-      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
-        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
+      if (cuePlayback) {
+        audio.pause();
+        audio.currentTime = section.start;
+        syncPlaybackUi();
       }
 
       refreshSelectionUi();
       renderSectionList();
       refreshMasteryUi();
+      return true;
     } catch (error) {
       handleError(error);
+      return false;
     }
+  }
+
+  async function cueSectionById(sectionId) {
+    return focusSection(sectionId, {
+      armForPlayback: true,
+      cuePlayback: true,
+    });
   }
 
   async function ensureTrackLoadedForSection(section) {
@@ -200,31 +235,15 @@ export function createSectionsController({
 
   async function playSectionById(sectionId) {
     try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const ready = await ensureTrackLoadedForSection(section);
+      const ready = await focusSection(sectionId, {
+        armForPlayback: true,
+        cuePlayback: true,
+      });
 
       if (!ready) {
         return;
       }
 
-      state.currentPlayingSectionId = section.id;
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-
-      audio.currentTime = section.start;
-      syncPlaybackUi();
       await audio.play();
     } catch (error) {
       handleError(error);
@@ -248,7 +267,7 @@ export function createSectionsController({
       return;
     }
 
-    if (elements.loopToggle.checked) {
+    if (state.loopEnabled) {
       audio.currentTime = activeSection.start;
       syncPlaybackUi();
       return;
@@ -325,10 +344,13 @@ export function createSectionsController({
   }
 
   return {
+    attachWorkspace,
+    detachWorkspace,
     refreshSections,
     renderSectionList,
     saveSelectionAsSection,
     focusSection,
+    cueSectionById,
     playSectionById,
     handleAudioBoundary,
     removeSection,

@@ -6,7 +6,7 @@
  */
 
 export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export const STORES = {
   PROFILES: "profiles",
@@ -14,6 +14,8 @@ export const STORES = {
   PLAYS: "plays",
   SETTINGS: "settings",
   ACTIVITIES: "activities",
+  PLANS: "plans",
+  PLAN_ITEMS: "planItems",
 };
 
 export const SETTINGS_KEYS = {
@@ -23,6 +25,7 @@ export const SETTINGS_KEYS = {
 };
 
 export const DEFAULT_PROFILE_NAME = "Default";
+export const DEFAULT_PLAN_NAME = "Current Plan";
 
 export const SUPPORTED_AUDIO_EXTENSIONS = [
   ".mp3",

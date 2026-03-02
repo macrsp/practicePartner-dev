@@ -11,9 +11,12 @@ export const state = {
 
   currentFolderHandle: null,
   currentFolderName: null,
+  trackStatusText: "No folder selected.",
   tracks: [],
   currentTrack: null,
   currentTrackUrl: null,
+  playbackRate: 1,
+  loopEnabled: false,
 
   allSections: [],
   visibleSections: [],
@@ -26,4 +29,8 @@ export const state = {
 
   activities: [],
   selectedActivityId: null,
+
+  plans: [],
+  currentPlanId: null,
+  planItems: [],
 };

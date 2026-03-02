@@ -5,9 +5,7 @@
  * @notes Keep this file presentation-only.
  */
 
-import { elements } from "../../shared/shell-ui.js";
-
-export function renderTracks(tracks, currentTrackName) {
+export function renderTracks(elements, tracks, currentTrackName) {
   elements.trackSelect.innerHTML = "";
 
   if (!tracks.length) {
@@ -33,10 +31,10 @@ export function renderTracks(tracks, currentTrackName) {
   elements.trackSelect.disabled = false;
 }
 
-export function setTrackCount(text) {
+export function setTrackCount(elements, text) {
   elements.trackCount.textContent = text;
 }
 
-export function setSpeedDisplay(value) {
+export function setSpeedDisplay(elements, value) {
   elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
 }

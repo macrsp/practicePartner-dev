@@ -1,8 +1,8 @@
 /**
  * @role controller
  * @owns default-profile bootstrap, profile creation, profile refresh, and profile selection state transitions
- * @not-owns section logic, track logic, activity logic, or direct IndexedDB schema management
- * @notes This controller may trigger section and activity refreshes after profile changes.
+ * @not-owns section logic, track logic, activity logic, plan logic, or direct IndexedDB schema management
+ * @notes This controller may trigger section, activity, and plan refreshes after profile changes.
  */
 
 import { DEFAULT_PROFILE_NAME } from "../../shared/constants.js";
@@ -11,7 +11,13 @@ import { state } from "../../app/state.js";
 import { showPrompt } from "../../shared/dialog.js";
 import { renderProfiles } from "./profiles-ui.js";
 
-export function createProfilesController({ refreshSections, refreshActivities, handleError }) {
+export function createProfilesController({
+  profileSelect,
+  refreshSections,
+  refreshActivities,
+  refreshPlans,
+  handleError,
+}) {
   async function ensureDefaultProfile() {
     const profiles = await getAllProfiles();
 
@@ -27,8 +33,11 @@ export function createProfilesController({ refreshSections, refreshActivities, h
     if (!profiles.length) {
       state.currentProfileId = null;
       state.selectedActivityId = null;
-      renderProfiles([], null);
-      await Promise.all([refreshSections(), refreshActivities()]);
+      state.currentPlanId = null;
+      renderProfiles(profileSelect, [], null);
+      await refreshSections();
+      await refreshActivities();
+      await refreshPlans();
       return;
     }
 
@@ -36,8 +45,10 @@ export function createProfilesController({ refreshSections, refreshActivities, h
       state.currentProfileId = profiles[0].id;
     }
 
-    renderProfiles(profiles, state.currentProfileId);
-    await Promise.all([refreshSections(), refreshActivities()]);
+    renderProfiles(profileSelect, profiles, state.currentProfileId);
+    await refreshSections();
+    await refreshActivities();
+    await refreshPlans();
   }
 
   async function createProfile() {
@@ -52,6 +63,7 @@ export function createProfilesController({ refreshSections, refreshActivities, h
       const profileId = await addProfile({ name: trimmed });
       state.currentProfileId = profileId;
       state.selectedActivityId = null;
+      state.currentPlanId = null;
       await refreshProfiles();
     } catch (error) {
       handleError(error);
@@ -63,6 +75,7 @@ export function createProfilesController({ refreshSections, refreshActivities, h
     state.focusedSectionId = null;
     state.currentPlayingSectionId = null;
     state.selectedActivityId = null;
+    state.currentPlanId = null;
   }
 
   return {
