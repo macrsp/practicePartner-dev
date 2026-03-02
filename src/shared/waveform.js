@@ -1,4 +1,4 @@
-\/**
+/**
  * @role renderer
  * @owns route-local audio element lifecycle, waveform decoding, peak caching, canvas rendering, embedded playback controls, seeking, loop state, playback-rate UI, selection display, and optional playback-bound enforcement
  * @not-owns persistence, saved-section business rules, or workspace route orchestration
@@ -102,6 +102,7 @@ export function createWaveformPlayer({
 
   let objectUrl = null;
   let audioBuffer = null;
+  let emptyWaveformMessage = "Pick a track to see the waveform.";
   let selection = { start: null, end: null };
   let playbackBounds = { start: null, end: null };
   let dragging = false;
@@ -349,7 +350,7 @@ export function createWaveformPlayer({
 
   function draw() {
     if (!audioBuffer) {
-      drawPlaceholder(audio.getAttribute("src") ? "Loading waveform…" : "Pick a track to see the waveform.");
+      drawPlaceholder(emptyWaveformMessage);
       return;
     }
 
@@ -499,7 +500,8 @@ export function createWaveformPlayer({
     pause();
     releaseObjectUrl();
 
-    drawPlaceholder("Loading waveform…");
+    emptyWaveformMessage = "Loading waveform…";
+    drawPlaceholder(emptyWaveformMessage);
 
     const nextObjectUrl = URL.createObjectURL(file);
     objectUrl = nextObjectUrl;
@@ -529,13 +531,17 @@ export function createWaveformPlayer({
 
     const decodePromise = decodeAudioFile(file);
 
-    const [, decodedBuffer] = await Promise.all([loadMetadataPromise, decodePromise]);
+    const [, decodeResult] = await Promise.all([loadMetadataPromise, decodePromise]);
 
-    audioBuffer = decodedBuffer;
+    audioBuffer = decodeResult.audioBuffer;
     cachedPeaks = null;
     cachedPeaksWidth = 0;
     audio.currentTime = 0;
     audio.playbackRate = playbackRate;
+
+    emptyWaveformMessage = decodeResult.unsupported
+      ? "Waveform preview is unavailable in this browser."
+      : "Pick a track to see the waveform.";
 
     updateControlsDisabled();
     updateTimeDisplay();
@@ -547,13 +553,20 @@ export function createWaveformPlayer({
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
     if (!AudioContextCtor) {
-      return null;
+      return {
+        audioBuffer: null,
+        unsupported: true,
+      };
     }
 
     const audioContext = new AudioContextCtor();
 
     try {
-      return await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      return {
+        audioBuffer: decoded,
+        unsupported: false,
+      };
     } finally {
       if (audioContext.close) {
         await audioContext.close();
@@ -569,6 +582,7 @@ export function createWaveformPlayer({
     audio.load();
 
     audioBuffer = null;
+    emptyWaveformMessage = "Pick a track to see the waveform.";
     selection = { start: null, end: null };
     playbackBounds = { start: null, end: null };
     cachedPeaks = null;
