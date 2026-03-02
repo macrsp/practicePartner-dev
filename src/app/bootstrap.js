@@ -37,6 +37,7 @@ const tracksController = createTracksController({
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
   renderActivityList: () => activitiesController.renderActivityList(),
   renderPlanList: () => plansController.renderPlanList(),
+  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
   handleError,
 });
 
@@ -48,6 +49,7 @@ sectionsController = createSectionsController({
   syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
   renderActivityList: () => activitiesController.renderActivityList(),
   renderPlanList: () => plansController.renderPlanList(),
+  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
   handleError,
 });
 

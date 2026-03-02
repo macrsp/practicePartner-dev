@@ -2,7 +2,7 @@
  * @role route-renderer
  * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
  * @not-owns shell chrome, track/section business logic, or persistent global transport
- * @notes This route renders only workspace-owned UI; activities live on the planner route.
+ * @notes The activity library stays on the planner route, while the workspace exposes contextual activity-creation shortcuts.
  */
 
 import { state } from "../../app/state.js";
@@ -68,6 +68,22 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
         <button type="button" data-workspace-el="saveSection">Save Section</button>
       </div>
 
+      <div class="section-header workspace-activity-tools">
+        <div>
+          <h2>Activity Shortcuts</h2>
+          <p class="small" data-workspace-el="activityContextSummary"></p>
+        </div>
+
+        <div class="section-actions">
+          <button type="button" class="secondary" data-workspace-el="createTrackActivity">
+            Create from Song
+          </button>
+          <button type="button" class="secondary" data-workspace-el="createSectionActivity">
+            Create from Section
+          </button>
+        </div>
+      </div>
+
       <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
     </section>
 
@@ -119,15 +135,26 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
     state.loopEnabled = Boolean(event.target.checked);
   };
 
+  const handleCreateTrackActivity = () => {
+    void services.activitiesController.createTrackActivityFromCurrentTrack();
+  };
+
+  const handleCreateSectionActivity = () => {
+    void services.activitiesController.createSectionActivityFromFocusedSection();
+  };
+
   elements.pickFolder.addEventListener("click", handlePickFolder);
   elements.trackSelect.addEventListener("change", handleTrackChange);
   elements.saveSection.addEventListener("click", handleSaveSection);
   elements.speed.addEventListener("input", handleSpeedChange);
   elements.loopToggle.addEventListener("change", handleLoopChange);
+  elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
+  elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
 
   services.selectionController.attachWorkspace(workspace);
   services.sectionsController.attachWorkspace(workspace);
   await services.tracksController.attachWorkspace(workspace);
+  services.activitiesController.attachWorkspace(workspace);
 
   return {
     cleanup() {
@@ -136,7 +163,10 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
       elements.saveSection.removeEventListener("click", handleSaveSection);
       elements.speed.removeEventListener("input", handleSpeedChange);
       elements.loopToggle.removeEventListener("change", handleLoopChange);
+      elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
+      elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
 
+      services.activitiesController.detachWorkspace();
       services.tracksController.detachWorkspace();
       services.sectionsController.detachWorkspace();
       services.selectionController.detachWorkspace();
@@ -156,6 +186,9 @@ export function getWorkspaceElements(routeRoot) {
     abDisplay: getRequiredElement(routeRoot, "abDisplay"),
     masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
     saveSection: getRequiredElement(routeRoot, "saveSection"),
+    activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
+    createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
+    createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
     waveformMount: getRequiredElement(routeRoot, "waveformMount"),
     sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
     sectionList: getRequiredElement(routeRoot, "sectionList"),
