@@ -413,126 +413,6 @@ export function deletePlanItem(planItemId) {
 }
 </file>
 
-<file path="src/routes/planner/planner-route.js">
-/**
- * @role route-renderer
- * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
- * @not-owns shell chrome, activity business rules, or plan persistence rules
- * @notes This route hosts activity management and the current plan surface.
- */
-
-export function renderPlannerRoute({ mountEl, services }) {
-  const routeRoot = document.createElement("div");
-  routeRoot.className = "route-page planner-page";
-  routeRoot.innerHTML = `
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Planner</h2>
-          <p class="small">
-            Build the current practice plan from reusable activities, then launch items into the workspace.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <div class="planner-grid">
-      <section class="card">
-        <div class="section-header">
-          <div>
-            <h2>Current Plan</h2>
-            <div class="small plan-name" data-planner-el="planName">Current Plan</div>
-            <div class="small" data-planner-el="planSummary"></div>
-          </div>
-        </div>
-
-        <div class="section-list" data-planner-el="planList"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header">
-          <div>
-            <h2>Activity Library</h2>
-            <div class="small" data-planner-el="activitySummary"></div>
-          </div>
-
-          <div class="section-actions">
-            <button type="button" class="secondary" data-planner-el="addTrackActivity">
-              Add Current Track
-            </button>
-            <button type="button" class="secondary" data-planner-el="addSectionActivity">
-              Add Focused Section
-            </button>
-            <button type="button" class="secondary" data-planner-el="addCustomActivity">
-              Add Custom
-            </button>
-          </div>
-        </div>
-
-        <div class="section-list" data-planner-el="activityList"></div>
-      </section>
-    </div>
-  `;
-
-  mountEl.replaceChildren(routeRoot);
-
-  const elements = getPlannerElements(routeRoot);
-
-  const handleAddTrackActivity = () => {
-    void services.activitiesController.createTrackActivityFromCurrentTrack();
-  };
-
-  const handleAddSectionActivity = () => {
-    void services.activitiesController.createSectionActivityFromFocusedSection();
-  };
-
-  const handleAddCustomActivity = () => {
-    void services.activitiesController.createCustomActivity();
-  };
-
-  elements.addTrackActivity.addEventListener("click", handleAddTrackActivity);
-  elements.addSectionActivity.addEventListener("click", handleAddSectionActivity);
-  elements.addCustomActivity.addEventListener("click", handleAddCustomActivity);
-
-  services.plansController.attachPlanner(elements);
-  services.activitiesController.attachPlanner(elements);
-
-  return {
-    cleanup() {
-      elements.addTrackActivity.removeEventListener("click", handleAddTrackActivity);
-      elements.addSectionActivity.removeEventListener("click", handleAddSectionActivity);
-      elements.addCustomActivity.removeEventListener("click", handleAddCustomActivity);
-
-      services.activitiesController.detachPlanner();
-      services.plansController.detachPlanner();
-    },
-  };
-}
-
-export function getPlannerElements(routeRoot) {
-  return {
-    planName: getRequiredElement(routeRoot, "planName"),
-    planSummary: getRequiredElement(routeRoot, "planSummary"),
-    planList: getRequiredElement(routeRoot, "planList"),
-    activitySummary: getRequiredElement(routeRoot, "activitySummary"),
-    activityList: getRequiredElement(routeRoot, "activityList"),
-    addTrackActivity: getRequiredElement(routeRoot, "addTrackActivity"),
-    addSectionActivity: getRequiredElement(routeRoot, "addSectionActivity"),
-    addCustomActivity: getRequiredElement(routeRoot, "addCustomActivity"),
-  };
-}
-
-function getRequiredElement(routeRoot, name) {
-  const element = routeRoot.querySelector(`[data-planner-el="${name}"]`);
-
-  if (!element) {
-    throw new Error(`Missing planner element: ${name}`);
-  }
-
-  return element;
-}
-</file>
-
 <file path="src/shared/dialog.js">
 /**
  * @role utility-module
@@ -1157,209 +1037,114 @@ export function deleteActivity(activityId) {
 }
 </file>
 
-<file path="src/routes/workspace/workspace-route.js">
+<file path="src/routes/planner/planner-route.js">
 /**
  * @role route-renderer
- * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
- * @not-owns shell chrome, track/section business logic, or persistent global transport
- * @notes The activity library stays on the planner route, while the workspace exposes contextual activity-creation shortcuts.
+ * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
+ * @not-owns shell chrome, activity business rules, or plan persistence rules
+ * @notes This route hosts the current plan surface and the reusable activity library; contextual track/section creation lives in the workspace.
  */
 
-import { state } from "../../app/state.js";
-import { createWaveform } from "../../shared/waveform.js";
-
-export async function renderWorkspaceRoute({ mountEl, services }) {
+export function renderPlannerRoute({ mountEl, services }) {
   const routeRoot = document.createElement("div");
-  routeRoot.className = "route-page workspace-page";
+  routeRoot.className = "route-page planner-page";
   routeRoot.innerHTML = `
     <section class="card">
       <div class="section-header">
         <div>
-          <h2>Workspace</h2>
+          <h2>Planner</h2>
           <p class="small">
-            Load a track, focus a saved section, and practice from the shared transport.
+            Review the current practice plan, browse reusable activities, and add custom references.
           </p>
         </div>
       </div>
-
-      <div class="row">
-        <button type="button" data-workspace-el="pickFolder">Pick Music Folder</button>
-        <div class="small" data-workspace-el="trackCount">No folder selected.</div>
-      </div>
-
-      <div class="row">
-        <label for="workspaceTrackSelect">Track</label>
-        <select
-          id="workspaceTrackSelect"
-          data-workspace-el="trackSelect"
-          aria-label="Track"
-        ></select>
-      </div>
-
-      <div class="row">
-        <label for="workspaceSpeed">Speed</label>
-        <input
-          id="workspaceSpeed"
-          data-workspace-el="speed"
-          type="range"
-          min="0.5"
-          max="1.5"
-          step="0.05"
-          value="${String(state.playbackRate)}"
-        />
-        <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
-
-        <label class="checkbox-label" for="workspaceLoopToggle">
-          <input
-            id="workspaceLoopToggle"
-            data-workspace-el="loopToggle"
-            type="checkbox"
-            ${state.loopEnabled ? "checked" : ""}
-          />
-          Loop focused section
-        </label>
-      </div>
-
-      <div class="row">
-        <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
-        <div class="mastery-pill">
-          Mastery <span data-workspace-el="masteryDisplay">—</span>
-        </div>
-        <button type="button" data-workspace-el="saveSection">Save Section</button>
-      </div>
-
-      <div class="section-header workspace-activity-tools">
-        <div>
-          <h2>Activity Shortcuts</h2>
-          <p class="small" data-workspace-el="activityContextSummary"></p>
-        </div>
-
-        <div class="section-actions">
-          <button type="button" class="secondary" data-workspace-el="createTrackActivity">
-            Create from Song
-          </button>
-          <button type="button" class="secondary" data-workspace-el="createSectionActivity">
-            Create from Section
-          </button>
-        </div>
-      </div>
-
-      <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
     </section>
 
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Saved Sections</h2>
-          <p class="small" data-workspace-el="sectionSummary"></p>
+    <div class="planner-grid">
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2>Current Plan</h2>
+            <p class="small">
+              Organize the order of practice using reusable activities from this profile.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div class="section-list" data-workspace-el="sectionList"></div>
-    </section>
+        <div class="planner-summary-bar">
+          <div>
+            <div class="small plan-name" data-planner-el="planName">Current Plan</div>
+            <div class="small" data-planner-el="planSummary"></div>
+          </div>
+        </div>
+
+        <div class="section-list" data-planner-el="planList"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2>Activity Library</h2>
+            <p class="small">
+              Reusable activities stay here. Create song and section activities from the Workspace.
+            </p>
+          </div>
+
+          <div class="section-actions">
+            <button type="button" class="secondary" data-planner-el="addCustomActivity">
+              Add Custom Activity
+            </button>
+          </div>
+        </div>
+
+        <div class="planner-summary-bar">
+          <div class="small" data-planner-el="activitySummary"></div>
+        </div>
+
+        <div class="section-list" data-planner-el="activityList"></div>
+      </section>
+    </div>
   `;
 
   mountEl.replaceChildren(routeRoot);
 
-  const elements = getWorkspaceElements(routeRoot);
-  const waveform = createWaveform({
-    mountEl: elements.waveformMount,
-    onSelectionChange: (selection) => {
-      services.selectionController.handleWaveformSelectionChange(selection);
-    },
-  });
+  const elements = getPlannerElements(routeRoot);
 
-  const workspace = {
-    ...elements,
-    waveform,
+  const handleAddCustomActivity = () => {
+    void services.activitiesController.createCustomActivity();
   };
 
-  const handlePickFolder = () => {
-    void services.tracksController.pickMusicFolder();
-  };
+  elements.addCustomActivity.addEventListener("click", handleAddCustomActivity);
 
-  const handleTrackChange = (event) => {
-    const nextIndex = Number(event.target.value);
-    void services.tracksController.selectTrackByIndex(nextIndex);
-  };
-
-  const handleSaveSection = () => {
-    void services.sectionsController.saveSelectionAsSection();
-  };
-
-  const handleSpeedChange = (event) => {
-    services.tracksController.setSpeed(Number(event.target.value));
-  };
-
-  const handleLoopChange = (event) => {
-    state.loopEnabled = Boolean(event.target.checked);
-  };
-
-  const handleCreateTrackActivity = () => {
-    void services.activitiesController.createTrackActivityFromCurrentTrack();
-  };
-
-  const handleCreateSectionActivity = () => {
-    void services.activitiesController.createSectionActivityFromFocusedSection();
-  };
-
-  elements.pickFolder.addEventListener("click", handlePickFolder);
-  elements.trackSelect.addEventListener("change", handleTrackChange);
-  elements.saveSection.addEventListener("click", handleSaveSection);
-  elements.speed.addEventListener("input", handleSpeedChange);
-  elements.loopToggle.addEventListener("change", handleLoopChange);
-  elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
-  elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
-
-  services.selectionController.attachWorkspace(workspace);
-  services.sectionsController.attachWorkspace(workspace);
-  await services.tracksController.attachWorkspace(workspace);
-  services.activitiesController.attachWorkspace(workspace);
+  services.plansController.attachPlanner(elements);
+  services.activitiesController.attachPlanner(elements);
 
   return {
     cleanup() {
-      elements.pickFolder.removeEventListener("click", handlePickFolder);
-      elements.trackSelect.removeEventListener("change", handleTrackChange);
-      elements.saveSection.removeEventListener("click", handleSaveSection);
-      elements.speed.removeEventListener("input", handleSpeedChange);
-      elements.loopToggle.removeEventListener("change", handleLoopChange);
-      elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
-      elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
+      elements.addCustomActivity.removeEventListener("click", handleAddCustomActivity);
 
-      services.activitiesController.detachWorkspace();
-      services.tracksController.detachWorkspace();
-      services.sectionsController.detachWorkspace();
-      services.selectionController.detachWorkspace();
-      waveform.destroy();
+      services.activitiesController.detachPlanner();
+      services.plansController.detachPlanner();
     },
   };
 }
 
-export function getWorkspaceElements(routeRoot) {
+export function getPlannerElements(routeRoot) {
   return {
-    pickFolder: getRequiredElement(routeRoot, "pickFolder"),
-    trackSelect: getRequiredElement(routeRoot, "trackSelect"),
-    trackCount: getRequiredElement(routeRoot, "trackCount"),
-    speed: getRequiredElement(routeRoot, "speed"),
-    speedVal: getRequiredElement(routeRoot, "speedVal"),
-    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
-    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
-    masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
-    saveSection: getRequiredElement(routeRoot, "saveSection"),
-    activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
-    createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
-    createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
-    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
-    sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
-    sectionList: getRequiredElement(routeRoot, "sectionList"),
+    planName: getRequiredElement(routeRoot, "planName"),
+    planSummary: getRequiredElement(routeRoot, "planSummary"),
+    planList: getRequiredElement(routeRoot, "planList"),
+    activitySummary: getRequiredElement(routeRoot, "activitySummary"),
+    activityList: getRequiredElement(routeRoot, "activityList"),
+    addCustomActivity: getRequiredElement(routeRoot, "addCustomActivity"),
   };
 }
 
 function getRequiredElement(routeRoot, name) {
-  const element = routeRoot.querySelector(`[data-workspace-el="${name}"]`);
+  const element = routeRoot.querySelector(`[data-planner-el="${name}"]`);
 
   if (!element) {
-    throw new Error(`Missing workspace element: ${name}`);
+    throw new Error(`Missing planner element: ${name}`);
   }
 
   return element;
@@ -1931,6 +1716,256 @@ export function setSetting(key, value) {
 }
 </file>
 
+<file path="src/routes/workspace/workspace-route.js">
+/**
+ * @role route-renderer
+ * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
+ * @not-owns shell chrome, track/section business logic, or persistent global transport
+ * @notes This route renders workspace-owned UI and contextual activity creation shortcuts without showing the full activity library.
+ */
+
+import { state } from "../../app/state.js";
+import { createWaveform } from "../../shared/waveform.js";
+
+export async function renderWorkspaceRoute({ mountEl, services }) {
+  const routeRoot = document.createElement("div");
+  routeRoot.className = "route-page workspace-page";
+  routeRoot.innerHTML = `
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Workspace</h2>
+          <p class="small">
+            Load a track, focus a saved section, and practice from the shared transport.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="card workspace-main-card">
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Track Setup</h2>
+              <p class="small">Choose a folder, load tracks, and set playback speed.</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="button" data-workspace-el="pickFolder">Pick Music Folder</button>
+            <div class="small" data-workspace-el="trackCount">No folder selected.</div>
+          </div>
+
+          <div class="row">
+            <label for="workspaceTrackSelect">Track</label>
+            <select
+              id="workspaceTrackSelect"
+              data-workspace-el="trackSelect"
+              aria-label="Track"
+            ></select>
+          </div>
+
+          <div class="row">
+            <label for="workspaceSpeed">Speed</label>
+            <input
+              id="workspaceSpeed"
+              data-workspace-el="speed"
+              type="range"
+              min="0.5"
+              max="1.5"
+              step="0.05"
+              value="${String(state.playbackRate)}"
+            />
+            <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
+
+            <label class="checkbox-label" for="workspaceLoopToggle">
+              <input
+                id="workspaceLoopToggle"
+                data-workspace-el="loopToggle"
+                type="checkbox"
+                ${state.loopEnabled ? "checked" : ""}
+              />
+              Loop focused section
+            </label>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Selection & Practice</h2>
+              <p class="small">Adjust the current range, review mastery, and save sections.</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
+            <div class="mastery-pill">
+              Mastery <span data-workspace-el="masteryDisplay">—</span>
+            </div>
+            <button type="button" data-workspace-el="saveSection">Save Section</button>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Waveform</h2>
+              <p class="small">Drag to define the active A/B range on the current track.</p>
+            </div>
+          </div>
+
+          <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
+        </div>
+      </section>
+
+      <div class="sidebar-stack">
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>Activity Shortcuts</h2>
+              <p class="small">
+                Create reusable activities from the current workspace context without opening the library.
+              </p>
+            </div>
+          </div>
+
+          <div class="planner-summary-bar">
+            <div class="small" data-workspace-el="activityContextSummary"></div>
+          </div>
+
+          <div class="section-actions">
+            <button type="button" class="secondary" data-workspace-el="createTrackActivity">
+              Create from Song
+            </button>
+            <button type="button" class="secondary" data-workspace-el="createSectionActivity">
+              Create from Section
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>Saved Sections</h2>
+              <p class="small" data-workspace-el="sectionSummary"></p>
+            </div>
+          </div>
+
+          <div class="section-list" data-workspace-el="sectionList"></div>
+        </section>
+      </div>
+    </div>
+  `;
+
+  mountEl.replaceChildren(routeRoot);
+
+  const elements = getWorkspaceElements(routeRoot);
+  const waveform = createWaveform({
+    mountEl: elements.waveformMount,
+    onSelectionChange: (selection) => {
+      services.selectionController.handleWaveformSelectionChange(selection);
+    },
+  });
+
+  const workspace = {
+    ...elements,
+    waveform,
+  };
+
+  const handlePickFolder = () => {
+    void services.tracksController.pickMusicFolder();
+  };
+
+  const handleTrackChange = (event) => {
+    const nextIndex = Number(event.target.value);
+    void services.tracksController.selectTrackByIndex(nextIndex);
+  };
+
+  const handleSaveSection = () => {
+    void services.sectionsController.saveSelectionAsSection();
+  };
+
+  const handleSpeedChange = (event) => {
+    services.tracksController.setSpeed(Number(event.target.value));
+  };
+
+  const handleLoopChange = (event) => {
+    state.loopEnabled = Boolean(event.target.checked);
+  };
+
+  const handleCreateTrackActivity = () => {
+    void services.activitiesController.createTrackActivityFromCurrentTrack();
+  };
+
+  const handleCreateSectionActivity = () => {
+    void services.activitiesController.createSectionActivityFromFocusedSection();
+  };
+
+  elements.pickFolder.addEventListener("click", handlePickFolder);
+  elements.trackSelect.addEventListener("change", handleTrackChange);
+  elements.saveSection.addEventListener("click", handleSaveSection);
+  elements.speed.addEventListener("input", handleSpeedChange);
+  elements.loopToggle.addEventListener("change", handleLoopChange);
+  elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
+  elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
+
+  services.selectionController.attachWorkspace(workspace);
+  services.sectionsController.attachWorkspace(workspace);
+  await services.tracksController.attachWorkspace(workspace);
+  services.activitiesController.attachWorkspace(workspace);
+
+  return {
+    cleanup() {
+      elements.pickFolder.removeEventListener("click", handlePickFolder);
+      elements.trackSelect.removeEventListener("change", handleTrackChange);
+      elements.saveSection.removeEventListener("click", handleSaveSection);
+      elements.speed.removeEventListener("input", handleSpeedChange);
+      elements.loopToggle.removeEventListener("change", handleLoopChange);
+      elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
+      elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
+
+      services.activitiesController.detachWorkspace();
+      services.tracksController.detachWorkspace();
+      services.sectionsController.detachWorkspace();
+      services.selectionController.detachWorkspace();
+      waveform.destroy();
+    },
+  };
+}
+
+export function getWorkspaceElements(routeRoot) {
+  return {
+    pickFolder: getRequiredElement(routeRoot, "pickFolder"),
+    trackSelect: getRequiredElement(routeRoot, "trackSelect"),
+    trackCount: getRequiredElement(routeRoot, "trackCount"),
+    speed: getRequiredElement(routeRoot, "speed"),
+    speedVal: getRequiredElement(routeRoot, "speedVal"),
+    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
+    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
+    masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
+    saveSection: getRequiredElement(routeRoot, "saveSection"),
+    activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
+    createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
+    createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
+    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
+    sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
+    sectionList: getRequiredElement(routeRoot, "sectionList"),
+  };
+}
+
+function getRequiredElement(routeRoot, name) {
+  const element = routeRoot.querySelector(`[data-workspace-el="${name}"]`);
+
+  if (!element) {
+    throw new Error(`Missing workspace element: ${name}`);
+  }
+
+  return element;
+}
+</file>
+
 <file path="src/shared/shell-ui.js">
 /**
  * @role renderer-support
@@ -2286,225 +2321,6 @@ function resolveRoute(route, routes, fallbackRoute) {
 
 function buildRouteHash(route) {
   return `#${route}`;
-}
-</file>
-
-<file path="src/features/activities/activities-ui.js">
-/**
- * @role renderer
- * @owns activity-list rendering, activity summary messaging, and presentation helpers for activity UI
- * @not-owns activity persistence, workspace state transitions, plan composition, or focus behavior
- * @notes Keep this file focused on presentation helpers and activity UI rendering.
- */
-
-import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-import { createSectionLabel } from "../../shared/utils.js";
-
-export function getActivityTargetLabel(targetType) {
-  switch (targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK:
-      return "Track";
-    case ACTIVITY_TARGET_TYPES.SECTION:
-      return "Saved section";
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return "Custom";
-    default:
-      return "Unknown";
-  }
-}
-
-export function describeActivity(activity, { tracks = [], sectionsById = new Map() } = {}) {
-  if (!activity) {
-    return "";
-  }
-
-  switch (activity.targetType) {
-    case ACTIVITY_TARGET_TYPES.TRACK: {
-      const isAvailable = tracks.some((track) => track.name === activity.trackName);
-      return `${getActivityTargetLabel(activity.targetType)} • ${activity.trackName ?? "—"}${
-        isAvailable ? "" : " • unavailable in current folder"
-      }`;
-    }
-
-    case ACTIVITY_TARGET_TYPES.SECTION: {
-      const section = sectionsById.get(activity.sectionId);
-
-      if (!section) {
-        return `${getActivityTargetLabel(activity.targetType)} • no longer exists`;
-      }
-
-      const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
-
-      return `${getActivityTargetLabel(activity.targetType)} • ${section.trackName} • ${createSectionLabel(section)}${
-        isTrackAvailable ? "" : " • track unavailable in current folder"
-      }`;
-    }
-
-    case ACTIVITY_TARGET_TYPES.CUSTOM:
-      return `${getActivityTargetLabel(activity.targetType)} • ${activity.customReference ?? "Custom reference"}`;
-
-    default:
-      return activity.name ?? "";
-  }
-}
-
-export function getActivityUseState(
-  activity,
-  { tracks = [], sectionsById = new Map() } = {},
-) {
-  if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
-    return {
-      interactive: false,
-      label: "Reference only",
-    };
-  }
-
-  if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
-    const isTrackAvailable = tracks.some((track) => track.name === activity.trackName);
-
-    if (!isTrackAvailable) {
-      return {
-        interactive: false,
-        label: "Unavailable",
-      };
-    }
-  }
-
-  if (activity.targetType === ACTIVITY_TARGET_TYPES.SECTION) {
-    const section = sectionsById.get(activity.sectionId);
-
-    if (!section) {
-      return {
-        interactive: false,
-        label: "Unavailable",
-      };
-    }
-
-    const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
-
-    if (!isTrackAvailable) {
-      return {
-        interactive: false,
-        label: "Unavailable",
-      };
-    }
-  }
-
-  return {
-    interactive: true,
-    label: "Use",
-  };
-}
-
-export function renderActivities({
-  elements,
-  currentProfileId,
-  activities,
-  selectedActivityId,
-  tracks,
-  sectionsById,
-  onUse,
-  onDelete,
-  onAddToPlan,
-}) {
-  elements.activityList.innerHTML = "";
-
-  if (!currentProfileId) {
-    elements.activitySummary.textContent = "Select a profile to manage reusable activities.";
-
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Select a profile to create and browse reusable activities.";
-    elements.activityList.appendChild(empty);
-    return;
-  }
-
-  elements.activitySummary.textContent = activities.length
-    ? `Showing ${activities.length} reusable activit${activities.length === 1 ? "y" : "ies"} in this profile.`
-    : "No reusable activities in this profile yet.";
-
-  if (!activities.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent =
-      "Use the buttons above to add the current track, the focused saved section, or a custom reference.";
-    elements.activityList.appendChild(empty);
-    return;
-  }
-
-  activities.forEach((activity) => {
-    const useState = getActivityUseState(activity, { tracks, sectionsById });
-
-    const row = document.createElement("div");
-    row.className = "section-row";
-    if (activity.id === selectedActivityId) {
-      row.classList.add("is-active");
-    }
-    if (!useState.interactive) {
-      row.classList.add("is-static");
-    }
-
-    const main = document.createElement("div");
-    main.className = "section-main";
-
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = activity.name;
-
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent = describeActivity(activity, { tracks, sectionsById });
-
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
-
-    if (onAddToPlan) {
-      const addToPlanButton = document.createElement("button");
-      addToPlanButton.type = "button";
-      addToPlanButton.className = "secondary";
-      addToPlanButton.textContent = "Add to Plan";
-      addToPlanButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        onAddToPlan(activity.id);
-      });
-      actions.appendChild(addToPlanButton);
-    }
-
-    const useButton = document.createElement("button");
-    useButton.type = "button";
-    useButton.textContent = useState.label;
-    useButton.disabled = !useState.interactive;
-    useButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (useState.interactive) {
-        onUse(activity.id);
-      }
-    });
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "danger";
-    deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onDelete(activity.id);
-    });
-
-    actions.appendChild(useButton);
-    actions.appendChild(deleteButton);
-
-    row.appendChild(main);
-    row.appendChild(actions);
-
-    if (useState.interactive) {
-      row.addEventListener("click", () => onUse(activity.id));
-    }
-
-    elements.activityList.appendChild(row);
-  });
 }
 </file>
 
@@ -3002,6 +2818,225 @@ export const state = {
   currentPlanId: null,
   planItems: [],
 };
+</file>
+
+<file path="src/features/activities/activities-ui.js">
+/**
+ * @role renderer
+ * @owns activity-list rendering, activity summary messaging, and presentation helpers for activity UI
+ * @not-owns activity persistence, workspace state transitions, plan composition, or focus behavior
+ * @notes Keep this file focused on presentation helpers and activity UI rendering.
+ */
+
+import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
+import { createSectionLabel } from "../../shared/utils.js";
+
+export function getActivityTargetLabel(targetType) {
+  switch (targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK:
+      return "Track";
+    case ACTIVITY_TARGET_TYPES.SECTION:
+      return "Saved section";
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return "Custom";
+    default:
+      return "Unknown";
+  }
+}
+
+export function describeActivity(activity, { tracks = [], sectionsById = new Map() } = {}) {
+  if (!activity) {
+    return "";
+  }
+
+  switch (activity.targetType) {
+    case ACTIVITY_TARGET_TYPES.TRACK: {
+      const isAvailable = tracks.some((track) => track.name === activity.trackName);
+      return `${getActivityTargetLabel(activity.targetType)} • ${activity.trackName ?? "—"}${
+        isAvailable ? "" : " • unavailable in current folder"
+      }`;
+    }
+
+    case ACTIVITY_TARGET_TYPES.SECTION: {
+      const section = sectionsById.get(activity.sectionId);
+
+      if (!section) {
+        return `${getActivityTargetLabel(activity.targetType)} • no longer exists`;
+      }
+
+      const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
+
+      return `${getActivityTargetLabel(activity.targetType)} • ${section.trackName} • ${createSectionLabel(section)}${
+        isTrackAvailable ? "" : " • track unavailable in current folder"
+      }`;
+    }
+
+    case ACTIVITY_TARGET_TYPES.CUSTOM:
+      return `${getActivityTargetLabel(activity.targetType)} • ${activity.customReference ?? "Custom reference"}`;
+
+    default:
+      return activity.name ?? "";
+  }
+}
+
+export function getActivityUseState(
+  activity,
+  { tracks = [], sectionsById = new Map() } = {},
+) {
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
+    return {
+      interactive: false,
+      label: "Reference only",
+    };
+  }
+
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
+    const isTrackAvailable = tracks.some((track) => track.name === activity.trackName);
+
+    if (!isTrackAvailable) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+  }
+
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.SECTION) {
+    const section = sectionsById.get(activity.sectionId);
+
+    if (!section) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+
+    const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
+
+    if (!isTrackAvailable) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+  }
+
+  return {
+    interactive: true,
+    label: "Use",
+  };
+}
+
+export function renderActivities({
+  elements,
+  currentProfileId,
+  activities,
+  selectedActivityId,
+  tracks,
+  sectionsById,
+  onUse,
+  onDelete,
+  onAddToPlan,
+}) {
+  elements.activityList.innerHTML = "";
+
+  if (!currentProfileId) {
+    elements.activitySummary.textContent = "Select a profile to manage reusable activities.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a profile to create and browse reusable activities.";
+    elements.activityList.appendChild(empty);
+    return;
+  }
+
+  elements.activitySummary.textContent = activities.length
+    ? `Showing ${activities.length} reusable activit${activities.length === 1 ? "y" : "ies"} in this profile.`
+    : "No reusable activities in this profile yet.";
+
+  if (!activities.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent =
+      "Create song or section activities from the Workspace, or add a custom activity here.";
+    elements.activityList.appendChild(empty);
+    return;
+  }
+
+  activities.forEach((activity) => {
+    const useState = getActivityUseState(activity, { tracks, sectionsById });
+
+    const row = document.createElement("div");
+    row.className = "section-row";
+    if (activity.id === selectedActivityId) {
+      row.classList.add("is-active");
+    }
+    if (!useState.interactive) {
+      row.classList.add("is-static");
+    }
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = activity.name;
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent = describeActivity(activity, { tracks, sectionsById });
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    if (onAddToPlan) {
+      const addToPlanButton = document.createElement("button");
+      addToPlanButton.type = "button";
+      addToPlanButton.className = "secondary";
+      addToPlanButton.textContent = "Add to Plan";
+      addToPlanButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onAddToPlan(activity.id);
+      });
+      actions.appendChild(addToPlanButton);
+    }
+
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.textContent = useState.label;
+    useButton.disabled = !useState.interactive;
+    useButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (useState.interactive) {
+        onUse(activity.id);
+      }
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onDelete(activity.id);
+    });
+
+    actions.appendChild(useButton);
+    actions.appendChild(deleteButton);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+
+    if (useState.interactive) {
+      row.addEventListener("click", () => onUse(activity.id));
+    }
+
+    elements.activityList.appendChild(row);
+  });
+}
 </file>
 
 <file path="src/features/sections/sections-controller.js">
@@ -4355,408 +4390,6 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
 - Keep explanations brief unless the user asks for deeper design rationale.
 </file>
 
-<file path="styles.css">
-/*
- * @role stylesheet
- * @owns presentation, layout, spacing, colors, responsive behavior, and component states
- * @not-owns markup structure or runtime behavior
- * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
- */
-
-:root {
-  --bg: #f4f6f8;
-  --card: #ffffff;
-  --card-alt: #f8fafc;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --secondary: #e5e7eb;
-  --danger: #ef4444;
-  --danger-dark: #dc2626;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
-  --radius: 14px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  padding: 24px;
-  background: var(--bg);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--text);
-}
-
-.container {
-  max-width: 1040px;
-  margin: 0 auto;
-}
-
-.page-header {
-  margin-bottom: 20px;
-}
-
-h1 {
-  font-size: 24px;
-  margin: 0 0 6px;
-  font-weight: 700;
-}
-
-h2 {
-  font-size: 18px;
-  margin: 0;
-  font-weight: 650;
-}
-
-.card {
-  background: var(--card);
-  padding: 20px;
-  border-radius: var(--radius);
-  margin-bottom: 20px;
-  box-shadow: var(--shadow);
-}
-
-.row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.row:last-child {
-  margin-bottom: 0;
-}
-
-.shell-toolbar-row {
-  justify-content: space-between;
-}
-
-.route-nav {
-  display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.route-nav button.is-active,
-.route-nav button[aria-current="page"] {
-  background: var(--primary);
-  color: #fff;
-}
-
-.route-nav button.is-active:hover,
-.route-nav button[aria-current="page"]:hover {
-  background: var(--primary-dark);
-}
-
-.global-transport audio {
-  margin-top: 0;
-}
-
-.route-page {
-  min-height: 120px;
-}
-
-.planner-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-label {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-select,
-input[type="range"] {
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  background: #fff;
-}
-
-select {
-  min-width: 220px;
-  max-width: 100%;
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-button:hover {
-  background: var(--primary-dark);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-button.secondary {
-  background: var(--secondary);
-  color: var(--text);
-}
-
-button.secondary:hover {
-  background: #d1d5db;
-}
-
-button.danger {
-  background: var(--danger);
-  color: #fff;
-}
-
-button.danger:hover {
-  background: var(--danger-dark);
-}
-
-button:disabled,
-select:disabled,
-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-}
-
-.waveform-wrap {
-  width: 100%;
-  margin-top: 12px;
-  margin-bottom: 12px;
-}
-
-.waveform-canvas {
-  width: 100%;
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-audio {
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 12px;
-}
-
-.mastery-pill {
-  background: #e0f2fe;
-  color: #0369a1;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.workspace-activity-tools {
-  margin-top: 16px;
-}
-
-.section-list {
-  display: grid;
-  gap: 12px;
-}
-
-.section-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  cursor: pointer;
-}
-
-.section-row:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.section-row.is-active {
-  border-color: var(--primary);
-  background: #dbeafe;
-}
-
-.section-row.is-static {
-  cursor: default;
-}
-
-.section-row.is-static:hover {
-  border-color: var(--border);
-  background: var(--card-alt);
-}
-
-.section-main {
-  min-width: 0;
-}
-
-.section-title {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.section-meta {
-  color: var(--muted);
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.empty-state {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 18px;
-  color: var(--muted);
-  background: var(--card-alt);
-}
-
-.small {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.plan-name {
-  margin-bottom: 4px;
-}
-
-/* Dialog */
-
-.app-dialog {
-  border: none;
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-  padding: 24px;
-  max-width: 420px;
-  width: calc(100% - 48px);
-  font-family: inherit;
-  color: var(--text);
-}
-
-.app-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.dialog-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 8px;
-}
-
-.dialog-title:empty {
-  display: none;
-}
-
-.dialog-message {
-  font-size: 14px;
-  color: var(--text);
-  margin: 0 0 16px;
-  line-height: 1.5;
-}
-
-.dialog-message:empty {
-  display: none;
-}
-
-.dialog-input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  font-family: inherit;
-  margin-bottom: 16px;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.dialog-input:focus {
-  border-color: var(--primary);
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-@media (max-width: 900px) {
-  .planner-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 720px) {
-  body {
-    padding: 16px;
-  }
-
-  .shell-toolbar-row {
-    justify-content: flex-start;
-  }
-
-  .section-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-actions {
-    justify-content: flex-start;
-  }
-
-  select {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .route-nav {
-    width: 100%;
-  }
-
-  .route-nav button {
-    flex: 1 1 0;
-  }
-}
-</file>
-
 <file path="src/features/activities/activities-controller.js">
 /**
  * @role controller
@@ -5175,6 +4808,454 @@ function sortActivities(a, b) {
     }) ||
     a.id - b.id
   );
+}
+</file>
+
+<file path="styles.css">
+/*
+ * @role stylesheet
+ * @owns presentation, layout, spacing, colors, responsive behavior, and component states
+ * @not-owns markup structure or runtime behavior
+ * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --card-alt: #f8fafc;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #e5e7eb;
+  --danger: #ef4444;
+  --danger-dark: #dc2626;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 650;
+}
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.shell-toolbar-row {
+  justify-content: space-between;
+}
+
+.route-nav {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-nav button.is-active,
+.route-nav button[aria-current="page"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.route-nav button.is-active:hover,
+.route-nav button[aria-current="page"]:hover {
+  background: var(--primary-dark);
+}
+
+.global-transport audio {
+  margin-top: 0;
+}
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-header-compact {
+  margin-bottom: 10px;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.waveform-wrap {
+  width: 100%;
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.waveform-canvas {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+audio {
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 12px;
+}
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.section-list {
+  display: grid;
+  gap: 12px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  cursor: pointer;
+}
+
+.section-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.section-row.is-active {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
+.section-row.is-static {
+  cursor: default;
+}
+
+.section-row.is-static:hover {
+  border-color: var(--border);
+  background: var(--card-alt);
+}
+
+.section-main {
+  min-width: 0;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-name {
+  margin-bottom: 4px;
+}
+
+/* Dialog */
+
+.app-dialog {
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  font-family: inherit;
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.dialog-title:empty {
+  display: none;
+}
+
+.dialog-message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.dialog-message:empty {
+  display: none;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.dialog-input:focus {
+  border-color: var(--primary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .planner-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 16px;
+  }
+
+  .shell-toolbar-row {
+    justify-content: flex-start;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .route-nav {
+    width: 100%;
+  }
+
+  .route-nav button {
+    flex: 1 1 0;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </file>
 
