@@ -1,15 +1,11 @@
 /**
  * @role renderer
- * @owns selection display, mastery display, section summary messaging, and saved-section list rendering
- * @not-owns section state transitions, persistence, or playback rules
+ * @owns mastery display, section summary messaging, and saved-section list rendering
+ * @not-owns selection display inside the waveform player, section state transitions, persistence, or playback rules
  * @notes Keep this file presentation-only.
  */
 
-import { createSectionLabel, formatTime } from "../../shared/utils.js";
-
-export function setSelectionDisplay(elements, start, end) {
-  elements.abDisplay.textContent = `A ${formatTime(start)} • B ${formatTime(end)}`;
-}
+import { createSectionLabel } from "../../shared/utils.js";
 
 export function setMasteryDisplay(elements, value) {
   elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";

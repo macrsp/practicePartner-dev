@@ -19,7 +19,6 @@ import { renderWorkspaceRoute } from "../routes/workspace/workspace-route.js";
 import { renderPlannerRoute } from "../routes/planner/planner-route.js";
 
 const shell = getShellElements();
-const audio = shell.audio;
 
 let router;
 let sectionsController;
@@ -31,7 +30,6 @@ const selectionController = createSelectionController({
 });
 
 const tracksController = createTracksController({
-  audio,
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   renderSectionList: () => sectionsController.renderSectionList(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
@@ -42,11 +40,9 @@ const tracksController = createTracksController({
 });
 
 sectionsController = createSectionsController({
-  audio,
   selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
   renderActivityList: () => activitiesController.renderActivityList(),
   renderPlanList: () => plansController.renderPlanList(),
   renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
@@ -76,7 +72,6 @@ const profilesController = createProfilesController({
 });
 
 const services = {
-  audio,
   shell,
   selectionController,
   tracksController,
@@ -133,29 +128,7 @@ function bindShellEvents() {
     void profilesController.createProfile();
   });
 
-  audio.addEventListener("timeupdate", () => {
-    tracksController.syncWaveformPlaybackPosition();
-    void sectionsController.handleAudioBoundary();
-  });
-
-  audio.addEventListener("loadedmetadata", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("seeked", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("pause", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("ended", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
   window.addEventListener("unload", () => {
-    tracksController.releaseCurrentTrackUrl();
     router.destroy();
   });
 }
