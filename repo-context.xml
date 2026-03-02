@@ -5516,6 +5516,58 @@ function sortActivities(a, b) {
 }
 </file>
 
+<file path="index.html">
+<!doctype html>
+<!--
+  @role document-shell
+  @owns static shell markup, semantic structure, persistent app chrome, and script/style entrypoints
+  @not-owns route rendering, route-local playback UI, or styling rules beyond structural classes and ids
+  @notes Keep this file markup-only.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Suzuki Practice Partner</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <section class="shell-toolbar">
+    <div class="container shell-toolbar-inner">
+      <div class="row shell-toolbar-row">
+        <nav class="route-nav" aria-label="Views">
+          <button id="workspaceNav" type="button" class="secondary">Workspace</button>
+          <button id="plannerNav" type="button" class="secondary">Planner</button>
+        </nav>
+
+        <div class="shell-profile-controls">
+          <label for="profileSelect">Profile</label>
+          <select id="profileSelect" aria-label="Profile"></select>
+          <button id="newProfile" type="button" class="secondary">New Profile</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+    <main id="routeMount"></main>
+  </div>
+
+  <dialog id="appDialog" class="app-dialog">
+    <h3 id="dialogTitle" class="dialog-title"></h3>
+    <p id="dialogMessage" class="dialog-message"></p>
+    <input id="dialogInput" type="text" class="dialog-input" hidden />
+    <div id="dialogFields" class="dialog-fields" hidden></div>
+    <div class="dialog-actions">
+      <button id="dialogCancel" type="button" class="secondary">Cancel</button>
+      <button id="dialogConfirm" type="button">OK</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="./src/app/bootstrap.js"></script>
+</body>
+</html>
+</file>
+
 <file path="styles.css">
 /*
  * @role stylesheet
@@ -6092,58 +6144,6 @@ input:disabled {
     white-space: normal;
   }
 }
-</file>
-
-<file path="index.html">
-<!doctype html>
-<!--
-  @role document-shell
-  @owns static shell markup, semantic structure, persistent app chrome, and script/style entrypoints
-  @not-owns route rendering, route-local playback UI, or styling rules beyond structural classes and ids
-  @notes Keep this file markup-only.
--->
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Suzuki Practice Partner</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <section class="shell-toolbar">
-    <div class="container shell-toolbar-inner">
-      <div class="row shell-toolbar-row">
-        <nav class="route-nav" aria-label="Views">
-          <button id="workspaceNav" type="button" class="secondary">Workspace</button>
-          <button id="plannerNav" type="button" class="secondary">Planner</button>
-        </nav>
-
-        <div class="shell-profile-controls">
-          <label for="profileSelect">Profile</label>
-          <select id="profileSelect" aria-label="Profile"></select>
-          <button id="newProfile" type="button" class="secondary">New Profile</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-    <main id="routeMount"></main>
-  </div>
-
-  <dialog id="appDialog" class="app-dialog">
-    <h3 id="dialogTitle" class="dialog-title"></h3>
-    <p id="dialogMessage" class="dialog-message"></p>
-    <input id="dialogInput" type="text" class="dialog-input" hidden />
-    <div id="dialogFields" class="dialog-fields" hidden></div>
-    <div class="dialog-actions">
-      <button id="dialogCancel" type="button" class="secondary">Cancel</button>
-      <button id="dialogConfirm" type="button">OK</button>
-    </div>
-  </dialog>
-
-  <script type="module" src="./src/app/bootstrap.js"></script>
-</body>
-</html>
 </file>
 
 </files>
