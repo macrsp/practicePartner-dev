@@ -247,232 +247,6 @@ export function renderProfiles(profileSelect, profiles, currentProfileId) {
 }
 </file>
 
-<file path="src/features/sections/sections-ui.js">
-/**
- * @role renderer
- * @owns selection display, mastery display, section summary messaging, and saved-section list rendering
- * @not-owns section state transitions, persistence, or playback rules
- * @notes Keep this file presentation-only.
- */
-
-import { createSectionLabel, formatTime } from "../../shared/utils.js";
-
-export function setSelectionDisplay(elements, start, end) {
-  elements.abDisplay.textContent = `A ${formatTime(start)} • B ${formatTime(end)}`;
-}
-
-export function setMasteryDisplay(elements, value) {
-  elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
-}
-
-export function renderSections({
-  elements,
-  sections,
-  activeSectionId,
-  currentTrackName,
-  onFocus,
-  onPlay,
-  onDelete,
-}) {
-  elements.sectionList.innerHTML = "";
-
-  if (!currentTrackName) {
-    elements.sectionSummary.textContent = "Select a track to view saved sections for that track.";
-
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Select a track to browse and manage its saved sections.";
-    elements.sectionList.appendChild(empty);
-    return;
-  }
-
-  elements.sectionSummary.textContent = sections.length
-    ? `Showing ${sections.length} saved section${sections.length === 1 ? "" : "s"} for ${currentTrackName}.`
-    : `No saved sections for ${currentTrackName} yet.`;
-
-  if (!sections.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Drag on the waveform to select a range, then save it as a section for this track.";
-    elements.sectionList.appendChild(empty);
-    return;
-  }
-
-  sections.forEach((section) => {
-    const row = document.createElement("div");
-    row.className = "section-row";
-    if (section.id === activeSectionId) {
-      row.classList.add("is-active");
-    }
-
-    const main = document.createElement("div");
-    main.className = "section-main";
-
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = createSectionLabel(section);
-
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent =
-      `${section.trackName} • plays ${section.playCount} • mastery ${section.mastery.toFixed(2)} • ` +
-      `last played ${section.lastPlayed ? new Date(section.lastPlayed).toLocaleString() : "never"}`;
-
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
-
-    const playButton = document.createElement("button");
-    playButton.type = "button";
-    playButton.textContent = "Play";
-    playButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onPlay(section.id);
-    });
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "danger";
-    deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onDelete(section.id);
-    });
-
-    actions.appendChild(playButton);
-    actions.appendChild(deleteButton);
-
-    row.appendChild(main);
-    row.appendChild(actions);
-    row.addEventListener("click", () => onFocus(section.id));
-
-    elements.sectionList.appendChild(row);
-  });
-}
-</file>
-
-<file path="src/features/sections/selection-controller.js">
-/**
- * @role controller
- * @owns waveform-driven selection state, mastery display refresh, and selection display refresh
- * @not-owns saved-section persistence, track loading, or profile management
- * @notes Keep this controller focused on selection semantics and related UI.
- */
-
-import { state } from "../../app/state.js";
-import { setMasteryDisplay, setSelectionDisplay } from "./sections-ui.js";
-
-export function createSelectionController({ renderSectionList }) {
-  let workspace = null;
-
-  function attachWorkspace(nextWorkspace) {
-    workspace = nextWorkspace;
-    refreshSelectionUi();
-    refreshMasteryUi();
-  }
-
-  function detachWorkspace() {
-    workspace = null;
-  }
-
-  function refreshSelectionUi() {
-    if (!workspace) {
-      return;
-    }
-
-    workspace.waveform.setSelection(state.selection);
-    setSelectionDisplay(workspace, state.selection.start, state.selection.end);
-  }
-
-  function refreshMasteryUi() {
-    if (!workspace) {
-      return;
-    }
-
-    const focusedSection =
-      state.allSections.find((section) => section.id === state.currentPlayingSectionId) ||
-      state.allSections.find((section) => section.id === state.focusedSectionId) ||
-      null;
-
-    setMasteryDisplay(workspace, focusedSection?.mastery ?? null);
-  }
-
-  function clearFocusedSectionForManualSelection() {
-    if (state.currentPlayingSectionId == null && state.focusedSectionId == null) {
-      return;
-    }
-
-    state.currentPlayingSectionId = null;
-    state.focusedSectionId = null;
-    renderSectionList();
-    refreshMasteryUi();
-  }
-
-  function handleWaveformSelectionChange(selection) {
-    state.selection = selection;
-
-    if (workspace) {
-      setSelectionDisplay(workspace, selection.start, selection.end);
-    }
-
-    clearFocusedSectionForManualSelection();
-  }
-
-  return {
-    attachWorkspace,
-    detachWorkspace,
-    refreshSelectionUi,
-    refreshMasteryUi,
-    handleWaveformSelectionChange,
-  };
-}
-</file>
-
-<file path="src/features/tracks/tracks-ui.js">
-/**
- * @role renderer
- * @owns track-select rendering, track-count messaging, and speed display rendering
- * @not-owns track loading, folder permissions, or playback behavior
- * @notes Keep this file presentation-only.
- */
-
-export function renderTracks(elements, tracks, currentTrackName) {
-  elements.trackSelect.innerHTML = "";
-
-  if (!tracks.length) {
-    const option = document.createElement("option");
-    option.textContent = "Pick a folder to load tracks";
-    option.disabled = true;
-    option.selected = true;
-    elements.trackSelect.appendChild(option);
-    elements.trackSelect.disabled = true;
-    return;
-  }
-
-  tracks.forEach((track, index) => {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = track.name;
-    if (track.name === currentTrackName) {
-      option.selected = true;
-    }
-    elements.trackSelect.appendChild(option);
-  });
-
-  elements.trackSelect.disabled = false;
-}
-
-export function setTrackCount(elements, text) {
-  elements.trackCount.textContent = text;
-}
-
-export function setSpeedDisplay(elements, value) {
-  elements.speedVal.textContent = `${Number(value).toFixed(2)}×`;
-}
-</file>
-
 <file path="src/persistence/activity-store.js">
 /**
  * @role persistence-helper
@@ -871,366 +645,6 @@ export function showFormPrompt(
       settle(null);
     },
   });
-}
-</file>
-
-<file path="src/shared/waveform.js">
-/**
- * @role renderer
- * @owns waveform decoding, peak caching, canvas rendering, drag selection, and playback-position visualization
- * @not-owns audio playback control, persistence, or section business rules
- * @notes Keep redraws efficient; cache derived waveform data when possible.
- */
-
-import { clamp } from "./utils.js";
-
-const COLORS = {
-  background: "#f8fafc",
-  waveform: "#cbd5e1",
-  playedFill: "rgba(249, 115, 22, 0.12)",
-  playheadLine: "#f97316",
-  selectionFill: "rgba(59, 130, 246, 0.20)",
-  selectionLine: "#2563eb",
-  text: "#6b7280",
-};
-
-export function createWaveform({ mountEl, onSelectionChange }) {
-  const canvas = document.createElement("canvas");
-  canvas.className = "waveform-canvas";
-  canvas.height = 140;
-  canvas.style.touchAction = "none";
-  mountEl.appendChild(canvas);
-
-  const ctx = canvas.getContext("2d");
-
-  let audioBuffer = null;
-  let selection = { start: null, end: null };
-  let playbackTime = null;
-  let dragging = false;
-  let cachedPeaks = null;
-  let cachedPeaksWidth = 0;
-
-  const handleResize = () => {
-    resize();
-  };
-
-  window.addEventListener("resize", handleResize);
-
-  canvas.addEventListener("pointerdown", handlePointerDown);
-  canvas.addEventListener("pointermove", handlePointerMove);
-  canvas.addEventListener("pointerup", handlePointerUp);
-  canvas.addEventListener("pointerleave", handlePointerUp);
-
-  resize();
-
-  function getDuration() {
-    return audioBuffer?.duration ?? 0;
-  }
-
-  function getNormalizedSelection() {
-    const duration = getDuration();
-    return {
-      start: Number.isFinite(selection.start) ? clamp(selection.start, 0, duration) : null,
-      end: Number.isFinite(selection.end) ? clamp(selection.end, 0, duration) : null,
-    };
-  }
-
-  function getNormalizedPlaybackTime() {
-    const duration = getDuration();
-    return Number.isFinite(playbackTime) ? clamp(playbackTime, 0, duration) : null;
-  }
-
-  function drawPlaceholder(message) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.text;
-    ctx.font = "14px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
-  }
-
-  function xToTime(x) {
-    const duration = getDuration();
-
-    if (!duration) {
-      return 0;
-    }
-
-    return (clamp(x, 0, canvas.width) / canvas.width) * duration;
-  }
-
-  function timeToX(time) {
-    const duration = getDuration();
-
-    if (!duration) {
-      return 0;
-    }
-
-    return (clamp(time, 0, duration) / duration) * canvas.width;
-  }
-
-  function resize() {
-    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
-    canvas.height = 140;
-    draw();
-  }
-
-  function computePeaks() {
-    if (!audioBuffer) {
-      cachedPeaks = null;
-      cachedPeaksWidth = 0;
-      return null;
-    }
-
-    if (cachedPeaks && cachedPeaksWidth === canvas.width) {
-      return cachedPeaks;
-    }
-
-    const channelData = audioBuffer.getChannelData(0);
-    const width = canvas.width;
-    const step = Math.max(1, Math.ceil(channelData.length / width));
-    const peaks = new Array(width);
-
-    for (let x = 0; x < width; x += 1) {
-      let min = 1;
-      let max = -1;
-      const offset = x * step;
-
-      for (let i = 0; i < step; i += 1) {
-        const sample = channelData[offset + i];
-
-        if (sample === undefined) {
-          break;
-        }
-
-        if (sample < min) {
-          min = sample;
-        }
-
-        if (sample > max) {
-          max = sample;
-        }
-      }
-
-      peaks[x] = { min, max };
-    }
-
-    cachedPeaks = peaks;
-    cachedPeaksWidth = width;
-    return peaks;
-  }
-
-  function draw() {
-    if (!audioBuffer) {
-      drawPlaceholder("Pick a track to see the waveform.");
-      return;
-    }
-
-    const peaks = computePeaks();
-    const amplitude = canvas.height / 2;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = COLORS.waveform;
-
-    for (let x = 0; x < canvas.width; x += 1) {
-      const peak = peaks[x];
-      ctx.fillRect(x, (1 + peak.min) * amplitude, 1, Math.max(1, (peak.max - peak.min) * amplitude));
-    }
-
-    drawPlaybackRegion();
-    drawSelection();
-    drawPlayhead();
-  }
-
-  function drawMarker(time, label) {
-    const x = timeToX(time);
-
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = COLORS.selectionLine;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.fillStyle = COLORS.selectionLine;
-    ctx.font = "12px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, Math.min(canvas.width - 20, x + 4), 6);
-  }
-
-  function drawPlaybackRegion() {
-    const currentTime = getNormalizedPlaybackTime();
-
-    if (currentTime == null) {
-      return;
-    }
-
-    const x = timeToX(currentTime);
-
-    if (x <= 0) {
-      return;
-    }
-
-    ctx.fillStyle = COLORS.playedFill;
-    ctx.fillRect(0, 0, x, canvas.height);
-  }
-
-  function drawPlayhead() {
-    const currentTime = getNormalizedPlaybackTime();
-
-    if (currentTime == null) {
-      return;
-    }
-
-    const x = timeToX(currentTime);
-
-    ctx.strokeStyle = COLORS.playheadLine;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-  }
-
-  function drawSelection() {
-    const current = getNormalizedSelection();
-
-    if (current.start == null && current.end == null) {
-      return;
-    }
-
-    if (current.start != null && current.end != null) {
-      const startX = timeToX(current.start);
-      const endX = timeToX(current.end);
-
-      ctx.fillStyle = COLORS.selectionFill;
-      ctx.fillRect(Math.min(startX, endX), 0, Math.abs(endX - startX), canvas.height);
-    }
-
-    if (current.start != null) {
-      drawMarker(current.start, "A");
-    }
-
-    if (current.end != null) {
-      drawMarker(current.end, "B");
-    }
-  }
-
-  function setSelection(nextSelection, { notify = false } = {}) {
-    selection = {
-      start: Number.isFinite(nextSelection?.start) ? nextSelection.start : null,
-      end: Number.isFinite(nextSelection?.end) ? nextSelection.end : null,
-    };
-
-    draw();
-
-    if (notify) {
-      onSelectionChange?.({ ...getNormalizedSelection() });
-    }
-  }
-
-  function setPlaybackTime(nextPlaybackTime) {
-    playbackTime = Number.isFinite(nextPlaybackTime) ? nextPlaybackTime : null;
-    draw();
-  }
-
-  async function loadFile(file) {
-    drawPlaceholder("Loading waveform…");
-
-    const arrayBuffer = await file.arrayBuffer();
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-
-    if (!AudioContextCtor) {
-      audioBuffer = null;
-      cachedPeaks = null;
-      cachedPeaksWidth = 0;
-      drawPlaceholder("Waveform preview is unavailable in this browser.");
-      return;
-    }
-
-    const audioContext = new AudioContextCtor();
-
-    try {
-      audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-      playbackTime = 0;
-      cachedPeaks = null;
-      cachedPeaksWidth = 0;
-    } finally {
-      if (audioContext.close) {
-        await audioContext.close();
-      }
-    }
-
-    draw();
-  }
-
-  function clear() {
-    audioBuffer = null;
-    selection = { start: null, end: null };
-    playbackTime = null;
-    cachedPeaks = null;
-    cachedPeaksWidth = 0;
-    draw();
-  }
-
-  function destroy() {
-    window.removeEventListener("resize", handleResize);
-    canvas.removeEventListener("pointerdown", handlePointerDown);
-    canvas.removeEventListener("pointermove", handlePointerMove);
-    canvas.removeEventListener("pointerup", handlePointerUp);
-    canvas.removeEventListener("pointerleave", handlePointerUp);
-    canvas.remove();
-  }
-
-  function handlePointerDown(event) {
-    if (!audioBuffer) {
-      return;
-    }
-
-    canvas.setPointerCapture(event.pointerId);
-    dragging = true;
-
-    const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
-
-    setSelection({ start: time, end: time }, { notify: true });
-  }
-
-  function handlePointerMove(event) {
-    if (!dragging || !audioBuffer) {
-      return;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
-
-    setSelection({ start: selection.start, end: time }, { notify: true });
-  }
-
-  function handlePointerUp(event) {
-    if (dragging && canvas.hasPointerCapture(event.pointerId)) {
-      canvas.releasePointerCapture(event.pointerId);
-    }
-
-    dragging = false;
-  }
-
-  return {
-    clear,
-    destroy,
-    loadFile,
-    setPlaybackTime,
-    setSelection,
-    getSelection: () => ({ ...getNormalizedSelection() }),
-  };
 }
 </file>
 
@@ -1799,6 +1213,218 @@ function createPlanSummary(planItemCount, planCount) {
 }
 </file>
 
+<file path="src/features/sections/sections-ui.js">
+/**
+ * @role renderer
+ * @owns mastery display, section summary messaging, and saved-section list rendering
+ * @not-owns selection display inside the waveform player, section state transitions, persistence, or playback rules
+ * @notes Keep this file presentation-only.
+ */
+
+import { createSectionLabel } from "../../shared/utils.js";
+
+export function setMasteryDisplay(elements, value) {
+  elements.masteryDisplay.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+export function renderSections({
+  elements,
+  sections,
+  activeSectionId,
+  currentTrackName,
+  onFocus,
+  onPlay,
+  onDelete,
+}) {
+  elements.sectionList.innerHTML = "";
+
+  if (!currentTrackName) {
+    elements.sectionSummary.textContent = "Select a track to view saved sections for that track.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a track to browse and manage its saved sections.";
+    elements.sectionList.appendChild(empty);
+    return;
+  }
+
+  elements.sectionSummary.textContent = sections.length
+    ? `Showing ${sections.length} saved section${sections.length === 1 ? "" : "s"} for ${currentTrackName}.`
+    : `No saved sections for ${currentTrackName} yet.`;
+
+  if (!sections.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Drag on the waveform to select a range, then save it as a section for this track.";
+    elements.sectionList.appendChild(empty);
+    return;
+  }
+
+  sections.forEach((section) => {
+    const row = document.createElement("div");
+    row.className = "section-row";
+    if (section.id === activeSectionId) {
+      row.classList.add("is-active");
+    }
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = createSectionLabel(section);
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent =
+      `${section.trackName} • plays ${section.playCount} • mastery ${section.mastery.toFixed(2)} • ` +
+      `last played ${section.lastPlayed ? new Date(section.lastPlayed).toLocaleString() : "never"}`;
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const playButton = document.createElement("button");
+    playButton.type = "button";
+    playButton.textContent = "Play";
+    playButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onPlay(section.id);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onDelete(section.id);
+    });
+
+    actions.appendChild(playButton);
+    actions.appendChild(deleteButton);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+    row.addEventListener("click", () => onFocus(section.id));
+
+    elements.sectionList.appendChild(row);
+  });
+}
+</file>
+
+<file path="src/features/sections/selection-controller.js">
+/**
+ * @role controller
+ * @owns waveform-driven selection state, mastery display refresh, and player-selection refresh
+ * @not-owns saved-section persistence, track loading, or profile management
+ * @notes Keep this controller focused on selection semantics and related UI.
+ */
+
+import { state } from "../../app/state.js";
+import { setMasteryDisplay } from "./sections-ui.js";
+
+export function createSelectionController({ renderSectionList }) {
+  let workspace = null;
+
+  function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    refreshSelectionUi();
+    refreshMasteryUi();
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
+  function refreshSelectionUi() {
+    if (!workspace) {
+      return;
+    }
+
+    workspace.player.setSelection(state.selection);
+  }
+
+  function refreshMasteryUi() {
+    if (!workspace) {
+      return;
+    }
+
+    const focusedSection =
+      state.allSections.find((section) => section.id === state.currentPlayingSectionId) ||
+      state.allSections.find((section) => section.id === state.focusedSectionId) ||
+      null;
+
+    setMasteryDisplay(workspace, focusedSection?.mastery ?? null);
+  }
+
+  function clearFocusedSectionForManualSelection() {
+    if (state.currentPlayingSectionId == null && state.focusedSectionId == null) {
+      return;
+    }
+
+    state.currentPlayingSectionId = null;
+    state.focusedSectionId = null;
+    renderSectionList();
+    refreshMasteryUi();
+  }
+
+  function handleWaveformSelectionChange(selection) {
+    state.selection = selection;
+    clearFocusedSectionForManualSelection();
+  }
+
+  return {
+    attachWorkspace,
+    detachWorkspace,
+    refreshSelectionUi,
+    refreshMasteryUi,
+    handleWaveformSelectionChange,
+  };
+}
+</file>
+
+<file path="src/features/tracks/tracks-ui.js">
+/**
+ * @role renderer
+ * @owns track-select rendering and track-count messaging
+ * @not-owns track loading, folder permissions, playback behavior, or waveform-player controls
+ * @notes Keep this file presentation-only.
+ */
+
+export function renderTracks(elements, tracks, currentTrackName) {
+  elements.trackSelect.innerHTML = "";
+
+  if (!tracks.length) {
+    const option = document.createElement("option");
+    option.textContent = "Pick a folder to load tracks";
+    option.disabled = true;
+    option.selected = true;
+    elements.trackSelect.appendChild(option);
+    elements.trackSelect.disabled = true;
+    return;
+  }
+
+  tracks.forEach((track, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = track.name;
+    if (track.name === currentTrackName) {
+      option.selected = true;
+    }
+    elements.trackSelect.appendChild(option);
+  });
+
+  elements.trackSelect.disabled = false;
+}
+
+export function setTrackCount(elements, text) {
+  elements.trackCount.textContent = text;
+}
+</file>
+
 <file path="src/persistence/db.js">
 /**
  * @role persistence-layer
@@ -2140,49 +1766,6 @@ function getRequiredElement(routeRoot, name) {
 }
 </file>
 
-<file path="src/shared/shell-ui.js">
-/**
- * @role renderer-support
- * @owns persistent shell element lookup and shell-level navigation state
- * @not-owns route-owned element lookup, feature rendering logic, or application state transitions
- * @notes Keep this file limited to shell-level element access.
- */
-
-function getElement(id) {
-  const element = document.getElementById(id);
-
-  if (!element) {
-    throw new Error(`Missing required element: #${id}`);
-  }
-
-  return element;
-}
-
-export function getShellElements() {
-  return {
-    routeMount: getElement("routeMount"),
-    profileSelect: getElement("profileSelect"),
-    newProfile: getElement("newProfile"),
-    workspaceNav: getElement("workspaceNav"),
-    plannerNav: getElement("plannerNav"),
-    audio: getElement("audio"),
-  };
-}
-
-export function setActiveShellRoute(elements, route) {
-  const navMap = new Map([
-    ["workspace", elements.workspaceNav],
-    ["planner", elements.plannerNav],
-  ]);
-
-  navMap.forEach((button, buttonRoute) => {
-    const isActive = buttonRoute === route;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-current", isActive ? "page" : "false");
-  });
-}
-</file>
-
 <file path="src/shared/utils.js">
 /**
  * @role utility-module
@@ -2273,6 +1856,769 @@ export function summarizeTrackCount(count) {
   }
 
   return `${count} track${count === 1 ? "" : "s"} loaded.`;
+}
+</file>
+
+<file path="src/shared/waveform.js">
+\/**
+ * @role renderer
+ * @owns route-local audio element lifecycle, waveform decoding, peak caching, canvas rendering, embedded playback controls, seeking, loop state, playback-rate UI, selection display, and optional playback-bound enforcement
+ * @not-owns persistence, saved-section business rules, or workspace route orchestration
+ * @notes Keep redraws efficient; cache derived waveform data when possible.
+ */
+
+import { clamp, formatTime } from "./utils.js";
+
+const COLORS = {
+  background: "#f8fafc",
+  waveform: "#cbd5e1",
+  playedFill: "rgba(249, 115, 22, 0.12)",
+  playheadLine: "#f97316",
+  selectionFill: "rgba(59, 130, 246, 0.20)",
+  selectionLine: "#2563eb",
+  text: "#6b7280",
+};
+
+let playerInstanceCount = 0;
+
+export function createWaveformPlayer({
+  mountEl,
+  initialPlaybackRate = 1,
+  initialLoopEnabled = false,
+  onSelectionChange,
+  onPlaybackRateChange,
+  onLoopChange,
+  onPlaybackBoundsComplete,
+}) {
+  const playerId = ++playerInstanceCount;
+  const speedInputId = `waveformPlayerSpeed-${playerId}`;
+  const loopToggleId = `waveformPlayerLoop-${playerId}`;
+
+  const root = document.createElement("div");
+  root.className = "waveform-player";
+  root.innerHTML = `
+    <div class="waveform-player-toolbar">
+      <div class="section-actions">
+        <button type="button" class="secondary" data-player-el="playPause">Play</button>
+      </div>
+
+      <div class="small waveform-time" data-player-el="timeDisplay">0:00.00 / 0:00.00</div>
+    </div>
+
+    <div class="waveform-wrap" data-player-el="waveformMount"></div>
+
+    <div class="waveform-player-controls">
+      <div class="mastery-pill" data-player-el="abDisplay">A — • B —</div>
+
+      <div class="waveform-player-field">
+        <label for="${speedInputId}">Playback speed</label>
+        <div class="waveform-player-speed-row">
+          <input
+            id="${speedInputId}"
+            data-player-el="speed"
+            type="range"
+            min="0.5"
+            max="1.5"
+            step="0.05"
+            value="${String(initialPlaybackRate)}"
+            aria-label="Playback speed"
+          />
+          <span class="mastery-pill" data-player-el="speedVal">${Number(initialPlaybackRate).toFixed(2)}×</span>
+        </div>
+      </div>
+
+      <label class="checkbox-label waveform-player-loop" for="${loopToggleId}">
+        <input
+          id="${loopToggleId}"
+          data-player-el="loopToggle"
+          type="checkbox"
+          ${initialLoopEnabled ? "checked" : ""}
+        />
+        Loop section playback
+      </label>
+    </div>
+  `;
+
+  mountEl.appendChild(root);
+
+  const playPauseButton = getRequiredElement(root, "playPause");
+  const timeDisplay = getRequiredElement(root, "timeDisplay");
+  const abDisplay = getRequiredElement(root, "abDisplay");
+  const speedInput = getRequiredElement(root, "speed");
+  const speedVal = getRequiredElement(root, "speedVal");
+  const loopToggle = getRequiredElement(root, "loopToggle");
+  const waveformMount = getRequiredElement(root, "waveformMount");
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "waveform-canvas";
+  canvas.height = 140;
+  canvas.style.touchAction = "none";
+  waveformMount.appendChild(canvas);
+
+  const audio = document.createElement("audio");
+  audio.preload = "metadata";
+  audio.hidden = true;
+  root.appendChild(audio);
+
+  const ctx = canvas.getContext("2d");
+
+  let objectUrl = null;
+  let audioBuffer = null;
+  let selection = { start: null, end: null };
+  let playbackBounds = { start: null, end: null };
+  let dragging = false;
+  let pointerStartX = 0;
+  let pointerStartTime = 0;
+  let cachedPeaks = null;
+  let cachedPeaksWidth = 0;
+  let playbackRate = Number(initialPlaybackRate) || 1;
+  let loopEnabled = Boolean(initialLoopEnabled);
+
+  const handleResize = () => {
+    resize();
+  };
+
+  const handlePlayPauseClick = () => {
+    if (audio.paused) {
+      void play();
+      return;
+    }
+
+    pause();
+  };
+
+  const handleSpeedInput = (event) => {
+    const nextValue = Number(event.target.value);
+    setPlaybackRate(nextValue, { notify: true });
+  };
+
+  const handleLoopInput = (event) => {
+    const enabled = Boolean(event.target.checked);
+    setLoopEnabled(enabled, { notify: true });
+  };
+
+  const handleAudioTimeUpdate = () => {
+    syncFromAudio();
+    enforcePlaybackBounds();
+  };
+
+  const handleAudioMetadata = () => {
+    syncFromAudio();
+    draw();
+    updateControlsDisabled();
+  };
+
+  const handleAudioPlay = () => {
+    updatePlayPauseButton();
+  };
+
+  const handleAudioPause = () => {
+    syncFromAudio();
+    updatePlayPauseButton();
+  };
+
+  const handleAudioEnded = () => {
+    syncFromAudio();
+    updatePlayPauseButton();
+  };
+
+  const handleAudioSeeked = () => {
+    syncFromAudio();
+    enforcePlaybackBounds();
+  };
+
+  window.addEventListener("resize", handleResize);
+  playPauseButton.addEventListener("click", handlePlayPauseClick);
+  speedInput.addEventListener("input", handleSpeedInput);
+  loopToggle.addEventListener("change", handleLoopInput);
+
+  audio.addEventListener("timeupdate", handleAudioTimeUpdate);
+  audio.addEventListener("loadedmetadata", handleAudioMetadata);
+  audio.addEventListener("play", handleAudioPlay);
+  audio.addEventListener("pause", handleAudioPause);
+  audio.addEventListener("ended", handleAudioEnded);
+  audio.addEventListener("seeked", handleAudioSeeked);
+
+  canvas.addEventListener("pointerdown", handlePointerDown);
+  canvas.addEventListener("pointermove", handlePointerMove);
+  canvas.addEventListener("pointerup", handlePointerUp);
+  canvas.addEventListener("pointercancel", handlePointerUp);
+
+  resize();
+  setPlaybackRate(playbackRate);
+  setLoopEnabled(loopEnabled);
+  setSelection(selection);
+  updateTimeDisplay();
+  updatePlayPauseButton();
+  updateControlsDisabled();
+
+  function getDuration() {
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      return audio.duration;
+    }
+
+    return audioBuffer?.duration ?? 0;
+  }
+
+  function getCurrentTime() {
+    return Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  }
+
+  function normalizeTime(value, duration = getDuration()) {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    if (duration > 0) {
+      return clamp(value, 0, duration);
+    }
+
+    return Math.max(0, value);
+  }
+
+  function normalizeRange(range) {
+    return {
+      start: normalizeTime(range?.start),
+      end: normalizeTime(range?.end),
+    };
+  }
+
+  function getNormalizedSelection() {
+    return normalizeRange(selection);
+  }
+
+  function getNormalizedPlaybackBounds() {
+    return normalizeRange(playbackBounds);
+  }
+
+  function updateControlsDisabled() {
+    const hasTrack = Boolean(audio.getAttribute("src"));
+    playPauseButton.disabled = !hasTrack;
+  }
+
+  function updatePlayPauseButton() {
+    playPauseButton.textContent = audio.paused ? "Play" : "Pause";
+  }
+
+  function updateTimeDisplay() {
+    timeDisplay.textContent = `${formatTime(getCurrentTime())} / ${formatTime(getDuration())}`;
+  }
+
+  function updateSelectionDisplay() {
+    const current = getNormalizedSelection();
+    abDisplay.textContent = `A ${formatTime(current.start)} • B ${formatTime(current.end)}`;
+  }
+
+  function updateSpeedDisplay() {
+    speedVal.textContent = `${playbackRate.toFixed(2)}×`;
+  }
+
+  function syncFromAudio() {
+    updateTimeDisplay();
+    draw();
+  }
+
+  function releaseObjectUrl() {
+    if (!objectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+  }
+
+  function drawPlaceholder(message) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+  }
+
+  function xToTime(x) {
+    const duration = getDuration();
+
+    if (!duration) {
+      return 0;
+    }
+
+    return (clamp(x, 0, canvas.width) / canvas.width) * duration;
+  }
+
+  function timeToX(time) {
+    const duration = getDuration();
+
+    if (!duration) {
+      return 0;
+    }
+
+    return (clamp(time, 0, duration) / duration) * canvas.width;
+  }
+
+  function resize() {
+    canvas.width = Math.max(320, Math.floor(waveformMount.clientWidth || 320));
+    canvas.height = 140;
+    draw();
+  }
+
+  function computePeaks() {
+    if (!audioBuffer) {
+      cachedPeaks = null;
+      cachedPeaksWidth = 0;
+      return null;
+    }
+
+    if (cachedPeaks && cachedPeaksWidth === canvas.width) {
+      return cachedPeaks;
+    }
+
+    const channelData = audioBuffer.getChannelData(0);
+    const width = canvas.width;
+    const step = Math.max(1, Math.ceil(channelData.length / width));
+    const peaks = new Array(width);
+
+    for (let x = 0; x < width; x += 1) {
+      let min = 1;
+      let max = -1;
+      const offset = x * step;
+
+      for (let i = 0; i < step; i += 1) {
+        const sample = channelData[offset + i];
+
+        if (sample === undefined) {
+          break;
+        }
+
+        if (sample < min) {
+          min = sample;
+        }
+
+        if (sample > max) {
+          max = sample;
+        }
+      }
+
+      peaks[x] = { min, max };
+    }
+
+    cachedPeaks = peaks;
+    cachedPeaksWidth = width;
+    return peaks;
+  }
+
+  function draw() {
+    if (!audioBuffer) {
+      drawPlaceholder(audio.getAttribute("src") ? "Loading waveform…" : "Pick a track to see the waveform.");
+      return;
+    }
+
+    const peaks = computePeaks();
+    const amplitude = canvas.height / 2;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = COLORS.waveform;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      const peak = peaks[x];
+      ctx.fillRect(x, (1 + peak.min) * amplitude, 1, Math.max(1, (peak.max - peak.min) * amplitude));
+    }
+
+    drawPlaybackRegion();
+    drawSelection();
+    drawPlayhead();
+  }
+
+  function drawMarker(time, label) {
+    const x = timeToX(time);
+
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = COLORS.selectionLine;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = COLORS.selectionLine;
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, Math.min(canvas.width - 20, x + 4), 6);
+  }
+
+  function drawPlaybackRegion() {
+    const currentTime = normalizeTime(getCurrentTime());
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    if (x <= 0) {
+      return;
+    }
+
+    ctx.fillStyle = COLORS.playedFill;
+    ctx.fillRect(0, 0, x, canvas.height);
+  }
+
+  function drawPlayhead() {
+    const currentTime = normalizeTime(getCurrentTime());
+
+    if (currentTime == null) {
+      return;
+    }
+
+    const x = timeToX(currentTime);
+
+    ctx.strokeStyle = COLORS.playheadLine;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
+  function drawSelection() {
+    const current = getNormalizedSelection();
+
+    if (current.start == null && current.end == null) {
+      return;
+    }
+
+    if (current.start != null && current.end != null) {
+      const startX = timeToX(current.start);
+      const endX = timeToX(current.end);
+
+      ctx.fillStyle = COLORS.selectionFill;
+      ctx.fillRect(Math.min(startX, endX), 0, Math.abs(endX - startX), canvas.height);
+    }
+
+    if (current.start != null) {
+      drawMarker(current.start, "A");
+    }
+
+    if (current.end != null) {
+      drawMarker(current.end, "B");
+    }
+  }
+
+  function setSelection(nextSelection, { notify = false } = {}) {
+    selection = {
+      start: Number.isFinite(nextSelection?.start) ? nextSelection.start : null,
+      end: Number.isFinite(nextSelection?.end) ? nextSelection.end : null,
+    };
+
+    updateSelectionDisplay();
+    draw();
+
+    if (notify) {
+      onSelectionChange?.({ ...getNormalizedSelection() });
+    }
+  }
+
+  function setPlaybackBounds(nextBounds) {
+    playbackBounds = {
+      start: Number.isFinite(nextBounds?.start) ? nextBounds.start : null,
+      end: Number.isFinite(nextBounds?.end) ? nextBounds.end : null,
+    };
+  }
+
+  function clearPlaybackBounds() {
+    setPlaybackBounds({ start: null, end: null });
+  }
+
+  function setPlaybackRate(value, { notify = false } = {}) {
+    const normalized = clamp(Number(value) || 1, 0.5, 1.5);
+    playbackRate = normalized;
+    speedInput.value = String(normalized);
+    audio.playbackRate = normalized;
+    updateSpeedDisplay();
+
+    if (notify) {
+      onPlaybackRateChange?.(normalized);
+    }
+  }
+
+  function setLoopEnabled(enabled, { notify = false } = {}) {
+    loopEnabled = Boolean(enabled);
+    loopToggle.checked = loopEnabled;
+
+    if (notify) {
+      onLoopChange?.(loopEnabled);
+    }
+  }
+
+  async function loadFile(file) {
+    pause();
+    releaseObjectUrl();
+
+    drawPlaceholder("Loading waveform…");
+
+    const nextObjectUrl = URL.createObjectURL(file);
+    objectUrl = nextObjectUrl;
+
+    const loadMetadataPromise = new Promise((resolve, reject) => {
+      const handleLoadedMetadata = () => {
+        cleanup();
+        resolve();
+      };
+
+      const handleError = () => {
+        cleanup();
+        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
+      };
+
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+        audio.removeEventListener("error", handleError);
+      };
+
+      audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.addEventListener("error", handleError);
+
+      audio.src = nextObjectUrl;
+      audio.load();
+    });
+
+    const decodePromise = decodeAudioFile(file);
+
+    const [, decodedBuffer] = await Promise.all([loadMetadataPromise, decodePromise]);
+
+    audioBuffer = decodedBuffer;
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
+    audio.currentTime = 0;
+    audio.playbackRate = playbackRate;
+
+    updateControlsDisabled();
+    updateTimeDisplay();
+    draw();
+  }
+
+  async function decodeAudioFile(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextCtor) {
+      return null;
+    }
+
+    const audioContext = new AudioContextCtor();
+
+    try {
+      return await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    } finally {
+      if (audioContext.close) {
+        await audioContext.close();
+      }
+    }
+  }
+
+  function clear() {
+    pause();
+    releaseObjectUrl();
+
+    audio.removeAttribute("src");
+    audio.load();
+
+    audioBuffer = null;
+    selection = { start: null, end: null };
+    playbackBounds = { start: null, end: null };
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
+
+    updateSelectionDisplay();
+    updateTimeDisplay();
+    updateControlsDisabled();
+    updatePlayPauseButton();
+    draw();
+  }
+
+  async function play() {
+    if (!audio.getAttribute("src")) {
+      return;
+    }
+
+    const bounds = getNormalizedPlaybackBounds();
+
+    if (bounds.start != null && bounds.end != null) {
+      const currentTime = getCurrentTime();
+
+      if (currentTime < bounds.start || currentTime >= bounds.end) {
+        audio.currentTime = bounds.start;
+      }
+    }
+
+    await audio.play();
+  }
+
+  function pause() {
+    audio.pause();
+  }
+
+  function seek(time) {
+    const duration = getDuration();
+
+    if (!duration) {
+      return;
+    }
+
+    audio.currentTime = clamp(Number(time) || 0, 0, duration);
+    syncFromAudio();
+  }
+
+  function enforcePlaybackBounds() {
+    const bounds = getNormalizedPlaybackBounds();
+
+    if (bounds.start == null || bounds.end == null) {
+      return;
+    }
+
+    if (getCurrentTime() < bounds.end) {
+      return;
+    }
+
+    if (loopEnabled) {
+      audio.currentTime = bounds.start;
+      syncFromAudio();
+      return;
+    }
+
+    const wasPlaying = !audio.paused;
+    pause();
+    audio.currentTime = bounds.end;
+    syncFromAudio();
+
+    if (wasPlaying) {
+      onPlaybackBoundsComplete?.({ ...bounds });
+    }
+  }
+
+  function destroy() {
+    pause();
+    releaseObjectUrl();
+
+    window.removeEventListener("resize", handleResize);
+    playPauseButton.removeEventListener("click", handlePlayPauseClick);
+    speedInput.removeEventListener("input", handleSpeedInput);
+    loopToggle.removeEventListener("change", handleLoopInput);
+
+    audio.removeEventListener("timeupdate", handleAudioTimeUpdate);
+    audio.removeEventListener("loadedmetadata", handleAudioMetadata);
+    audio.removeEventListener("play", handleAudioPlay);
+    audio.removeEventListener("pause", handleAudioPause);
+    audio.removeEventListener("ended", handleAudioEnded);
+    audio.removeEventListener("seeked", handleAudioSeeked);
+
+    canvas.removeEventListener("pointerdown", handlePointerDown);
+    canvas.removeEventListener("pointermove", handlePointerMove);
+    canvas.removeEventListener("pointerup", handlePointerUp);
+    canvas.removeEventListener("pointercancel", handlePointerUp);
+
+    root.remove();
+  }
+
+  function handlePointerDown(event) {
+    if (!audioBuffer) {
+      return;
+    }
+
+    canvas.setPointerCapture(event.pointerId);
+    dragging = false;
+    pointerStartX = event.clientX;
+
+    const rect = canvas.getBoundingClientRect();
+    pointerStartTime = xToTime(event.clientX - rect.left);
+  }
+
+  function handlePointerMove(event) {
+    if (!canvas.hasPointerCapture(event.pointerId) || !audioBuffer) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const nextTime = xToTime(event.clientX - rect.left);
+
+    if (!dragging && Math.abs(event.clientX - pointerStartX) >= 4) {
+      dragging = true;
+    }
+
+    if (!dragging) {
+      return;
+    }
+
+    setSelection(
+      {
+        start: pointerStartTime,
+        end: nextTime,
+      },
+      { notify: true },
+    );
+  }
+
+  function handlePointerUp(event) {
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+
+    if (!audioBuffer) {
+      dragging = false;
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const nextTime = xToTime(event.clientX - rect.left);
+
+    if (dragging) {
+      setSelection(
+        {
+          start: pointerStartTime,
+          end: nextTime,
+        },
+        { notify: true },
+      );
+      dragging = false;
+      return;
+    }
+
+    seek(nextTime);
+    dragging = false;
+  }
+
+  return {
+    clear,
+    destroy,
+    loadFile,
+    play,
+    pause,
+    seek,
+    setSelection,
+    getSelection: () => ({ ...getNormalizedSelection() }),
+    setPlaybackBounds,
+    clearPlaybackBounds,
+    setPlaybackRate,
+    setLoopEnabled,
+    getCurrentTime,
+  };
+}
+
+function getRequiredElement(root, name) {
+  const element = root.querySelector(`[data-player-el="${name}"]`);
+
+  if (!element) {
+    throw new Error(`Missing waveform player element: ${name}`);
+  }
+
+  return element;
 }
 </file>
 
@@ -2588,17 +2934,105 @@ export function createProfilesController({
 }
 </file>
 
+<file path="src/shared/constants.js">
+/**
+ * @role shared-constants
+ * @owns database names, schema versions, store names, settings keys, and shared feature constants
+ * @not-owns runtime state, persistence behavior, or UI logic
+ * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
+ */
+
+export const DB_NAME = "suzukiDB_v4";
+export const DB_VERSION = 6;
+
+export const STORES = {
+  PROFILES: "profiles",
+  SECTIONS: "sections",
+  PLAYS: "plays",
+  SETTINGS: "settings",
+  ACTIVITIES: "activities",
+  PLANS: "plans",
+  PLAN_ITEMS: "planItems",
+};
+
+export const SETTINGS_KEYS = {
+  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
+  MUSIC_FOLDER_NAME: "musicFolderName",
+  LAST_TRACK_NAME: "lastTrackName",
+};
+
+export const DEFAULT_PROFILE_NAME = "Default";
+export const DEFAULT_PLAN_NAME = "Current Plan";
+
+export const SUPPORTED_AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+];
+
+export const ACTIVITY_TARGET_TYPES = {
+  TRACK: "track",
+  SECTION: "section",
+  CUSTOM: "custom",
+};
+</file>
+
+<file path="src/shared/shell-ui.js">
+/**
+ * @role renderer-support
+ * @owns persistent shell element lookup and shell-level navigation state
+ * @not-owns route-owned element lookup, route-local playback UI, or application state transitions
+ * @notes Keep this file limited to shell-level element access.
+ */
+
+function getElement(id) {
+  const element = document.getElementById(id);
+
+  if (!element) {
+    throw new Error(`Missing required element: #${id}`);
+  }
+
+  return element;
+}
+
+export function getShellElements() {
+  return {
+    routeMount: getElement("routeMount"),
+    profileSelect: getElement("profileSelect"),
+    newProfile: getElement("newProfile"),
+    workspaceNav: getElement("workspaceNav"),
+    plannerNav: getElement("plannerNav"),
+  };
+}
+
+export function setActiveShellRoute(elements, route) {
+  const navMap = new Map([
+    ["workspace", elements.workspaceNav],
+    ["planner", elements.plannerNav],
+  ]);
+
+  navMap.forEach((button, buttonRoute) => {
+    const isActive = buttonRoute === route;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
+  });
+}
+</file>
+
 <file path="src/features/tracks/tracks-controller.js">
 /**
  * @role controller
- * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
- * @not-owns section CRUD, activity CRUD, plan CRUD, profile management, or low-level IndexedDB helpers
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, route-local player loading, and playback-rate persistence
+ * @not-owns section CRUD, activity CRUD, plan CRUD, profile management, or waveform-player rendering internals
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
 import { state } from "../../app/state.js";
 import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
-import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
+import { renderTracks, setTrackCount } from "./tracks-ui.js";
 import {
   getRememberedMusicFolder,
   rememberLastTrackName,
@@ -2606,7 +3040,6 @@ import {
 } from "./music-folder-store.js";
 
 export function createTracksController({
-  audio,
   refreshSelectionUi,
   renderSectionList,
   refreshMasteryUi,
@@ -2621,11 +3054,23 @@ export function createTracksController({
     workspace = nextWorkspace;
     renderWorkspaceUi();
 
-    if (state.currentTrack && workspace?.waveform) {
-      await workspace.waveform.loadFile(state.currentTrack.file);
-      syncWaveformPlaybackPosition();
-    } else if (workspace?.waveform) {
-      workspace.waveform.clear();
+    workspace.player.setPlaybackRate(state.playbackRate);
+    workspace.player.setLoopEnabled(state.loopEnabled);
+
+    if (state.currentTrack) {
+      await workspace.player.loadFile(state.currentTrack.file);
+
+      if (state.currentPlayingSectionId) {
+        const activeSection = state.allSections.find(
+          (section) => section.id === state.currentPlayingSectionId,
+        );
+
+        if (activeSection) {
+          workspace.player.seek(activeSection.start);
+        }
+      }
+    } else {
+      workspace.player.clear();
     }
   }
 
@@ -2770,7 +3215,6 @@ export function createTracksController({
       return;
     }
 
-    audio.pause();
     state.currentPlayingSectionId = null;
     state.currentTrack = track;
 
@@ -2781,19 +3225,16 @@ export function createTracksController({
 
     renderWorkspaceUi();
 
-    await loadAudioFile(track.file);
+    if (workspace?.player) {
+      await workspace.player.loadFile(track.file);
 
-    if (workspace?.waveform) {
-      await workspace.waveform.loadFile(track.file);
+      if (Number.isFinite(cueAtTime)) {
+        workspace.player.seek(Math.max(0, cueAtTime));
+      }
     }
 
     await rememberLastTrackName(track.name);
 
-    if (Number.isFinite(cueAtTime)) {
-      audio.currentTime = Math.max(0, cueAtTime);
-    }
-
-    syncWaveformPlaybackPosition();
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
@@ -2802,18 +3243,13 @@ export function createTracksController({
   }
 
   function clearCurrentTrack() {
-    audio.pause();
     state.currentPlayingSectionId = null;
     state.currentTrack = null;
     state.selection = { start: null, end: null };
     state.focusedSectionId = null;
 
-    releaseCurrentTrackUrl();
-    audio.removeAttribute("src");
-    audio.load();
-
-    if (workspace?.waveform) {
-      workspace.waveform.clear();
+    if (workspace?.player) {
+      workspace.player.clear();
     }
 
     renderWorkspaceUi();
@@ -2824,63 +3260,12 @@ export function createTracksController({
     renderPlanList();
   }
 
-  async function loadAudioFile(file) {
-    releaseCurrentTrackUrl();
-
-    const objectUrl = URL.createObjectURL(file);
-    state.currentTrackUrl = objectUrl;
-
-    await new Promise((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        resolve();
-      };
-
-      const onError = () => {
-        cleanup();
-        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
-      };
-
-      const cleanup = () => {
-        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-        audio.removeEventListener("error", onError);
-      };
-
-      audio.addEventListener("loadedmetadata", onLoadedMetadata);
-      audio.addEventListener("error", onError);
-
-      audio.src = objectUrl;
-      audio.load();
-    });
-
-    audio.playbackRate = state.playbackRate;
-  }
-
-  function releaseCurrentTrackUrl() {
-    if (!state.currentTrackUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(state.currentTrackUrl);
-    state.currentTrackUrl = null;
-  }
-
   function setSpeed(value) {
     state.playbackRate = value;
-    audio.playbackRate = value;
 
-    if (workspace) {
-      workspace.speed.value = String(value);
-      setSpeedDisplay(workspace, value);
+    if (workspace?.player) {
+      workspace.player.setPlaybackRate(value);
     }
-  }
-
-  function syncWaveformPlaybackPosition() {
-    if (!workspace?.waveform) {
-      return;
-    }
-
-    workspace.waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
   }
 
   function renderWorkspaceUi() {
@@ -2890,8 +3275,6 @@ export function createTracksController({
 
     renderTracks(workspace, state.tracks, state.currentTrack?.name ?? null);
     setTrackCount(workspace, state.trackStatusText);
-    workspace.speed.value = String(state.playbackRate);
-    setSpeedDisplay(workspace, state.playbackRate);
     renderWorkspaceActivityActions?.();
   }
 
@@ -2902,9 +3285,7 @@ export function createTracksController({
     pickMusicFolder,
     selectTrackByIndex,
     clearCurrentTrack,
-    releaseCurrentTrackUrl,
     setSpeed,
-    syncWaveformPlaybackPosition,
   };
 }
 </file>
@@ -2913,12 +3294,12 @@ export function createTracksController({
 /**
  * @role route-renderer
  * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
- * @not-owns shell chrome, track/section business logic, or persistent global transport
- * @notes This route renders workspace-owned UI and contextual activity creation shortcuts without showing the full activity library.
+ * @not-owns shell chrome, track/section business logic, or shell-level playback UI
+ * @notes This route renders workspace-owned source selection, waveform-player playback, and contextual activity creation shortcuts without showing the full activity library.
  */
 
 import { state } from "../../app/state.js";
-import { createWaveform } from "../../shared/waveform.js";
+import { createWaveformPlayer } from "../../shared/waveform.js";
 
 export async function renderWorkspaceRoute({ mountEl, services }) {
   const routeRoot = document.createElement("div");
@@ -2929,7 +3310,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
         <div>
           <h2>Workspace</h2>
           <p class="small">
-            Load a track, focus a saved section, and practice from the shared transport.
+            Load a track, focus a saved section, and practice directly from the waveform player.
           </p>
         </div>
       </div>
@@ -2941,7 +3322,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
           <div class="section-header section-header-compact">
             <div>
               <h2>Track Setup</h2>
-              <p class="small">Choose a folder, load tracks, and set playback speed.</p>
+              <p class="small">Choose a folder and select a track.</p>
             </div>
           </div>
 
@@ -2958,58 +3339,33 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
               aria-label="Track"
             ></select>
           </div>
-
-          <div class="row">
-            <label for="workspaceSpeed">Speed</label>
-            <input
-              id="workspaceSpeed"
-              data-workspace-el="speed"
-              type="range"
-              min="0.5"
-              max="1.5"
-              step="0.05"
-              value="${String(state.playbackRate)}"
-            />
-            <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
-
-            <label class="checkbox-label" for="workspaceLoopToggle">
-              <input
-                id="workspaceLoopToggle"
-                data-workspace-el="loopToggle"
-                type="checkbox"
-                ${state.loopEnabled ? "checked" : ""}
-              />
-              Loop focused section
-            </label>
-          </div>
         </div>
 
         <div class="panel-block">
           <div class="section-header section-header-compact">
             <div>
-              <h2>Selection & Practice</h2>
-              <p class="small">Adjust the current range, review mastery, and save sections.</p>
+              <h2>Waveform Player</h2>
+              <p class="small">Click to seek, drag to mark A/B, and control playback here.</p>
+            </div>
+          </div>
+
+          <div data-workspace-el="playerMount"></div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Selection & Sections</h2>
+              <p class="small">Review mastery and save the current waveform selection.</p>
             </div>
           </div>
 
           <div class="row">
-            <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
             <div class="mastery-pill">
               Mastery <span data-workspace-el="masteryDisplay">—</span>
             </div>
             <button type="button" data-workspace-el="saveSection">Save Section</button>
           </div>
-        </div>
-
-        <div class="panel-block">
-          <div class="section-header section-header-compact">
-            <div>
-              <h2>Waveform</h2>
-              <p class="small">Drag to define the active A/B range on the current track.</p>
-            </div>
-          </div>
-
-          <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
         </div>
       </section>
 
@@ -3055,16 +3411,27 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
   mountEl.replaceChildren(routeRoot);
 
   const elements = getWorkspaceElements(routeRoot);
-  const waveform = createWaveform({
-    mountEl: elements.waveformMount,
+  const player = createWaveformPlayer({
+    mountEl: elements.playerMount,
+    initialPlaybackRate: state.playbackRate,
+    initialLoopEnabled: state.loopEnabled,
     onSelectionChange: (selection) => {
       services.selectionController.handleWaveformSelectionChange(selection);
+    },
+    onPlaybackRateChange: (value) => {
+      services.tracksController.setSpeed(value);
+    },
+    onLoopChange: (enabled) => {
+      state.loopEnabled = enabled;
+    },
+    onPlaybackBoundsComplete: () => {
+      void services.sectionsController.handlePlaybackBoundsComplete();
     },
   });
 
   const workspace = {
     ...elements,
-    waveform,
+    player,
   };
 
   const handlePickFolder = () => {
@@ -3080,14 +3447,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
     void services.sectionsController.saveSelectionAsSection();
   };
 
-  const handleSpeedChange = (event) => {
-    services.tracksController.setSpeed(Number(event.target.value));
-  };
-
-  const handleLoopChange = (event) => {
-    state.loopEnabled = Boolean(event.target.checked);
-  };
-
   const handleCreateTrackActivity = () => {
     void services.activitiesController.createTrackActivityFromCurrentTrack();
   };
@@ -3099,8 +3458,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
   elements.pickFolder.addEventListener("click", handlePickFolder);
   elements.trackSelect.addEventListener("change", handleTrackChange);
   elements.saveSection.addEventListener("click", handleSaveSection);
-  elements.speed.addEventListener("input", handleSpeedChange);
-  elements.loopToggle.addEventListener("change", handleLoopChange);
   elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
   elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
 
@@ -3114,8 +3471,6 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
       elements.pickFolder.removeEventListener("click", handlePickFolder);
       elements.trackSelect.removeEventListener("change", handleTrackChange);
       elements.saveSection.removeEventListener("click", handleSaveSection);
-      elements.speed.removeEventListener("input", handleSpeedChange);
-      elements.loopToggle.removeEventListener("change", handleLoopChange);
       elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
       elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
 
@@ -3123,7 +3478,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
       services.tracksController.detachWorkspace();
       services.sectionsController.detachWorkspace();
       services.selectionController.detachWorkspace();
-      waveform.destroy();
+      player.destroy();
     },
   };
 }
@@ -3133,16 +3488,12 @@ export function getWorkspaceElements(routeRoot) {
     pickFolder: getRequiredElement(routeRoot, "pickFolder"),
     trackSelect: getRequiredElement(routeRoot, "trackSelect"),
     trackCount: getRequiredElement(routeRoot, "trackCount"),
-    speed: getRequiredElement(routeRoot, "speed"),
-    speedVal: getRequiredElement(routeRoot, "speedVal"),
-    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
-    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
     masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
     saveSection: getRequiredElement(routeRoot, "saveSection"),
     activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
     createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
     createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
-    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
+    playerMount: getRequiredElement(routeRoot, "playerMount"),
     sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
     sectionList: getRequiredElement(routeRoot, "sectionList"),
   };
@@ -3157,52 +3508,6 @@ function getRequiredElement(routeRoot, name) {
 
   return element;
 }
-</file>
-
-<file path="src/shared/constants.js">
-/**
- * @role shared-constants
- * @owns database names, schema versions, store names, settings keys, and shared feature constants
- * @not-owns runtime state, persistence behavior, or UI logic
- * @notes Update DB_VERSION only for intentional IndexedDB schema changes.
- */
-
-export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 6;
-
-export const STORES = {
-  PROFILES: "profiles",
-  SECTIONS: "sections",
-  PLAYS: "plays",
-  SETTINGS: "settings",
-  ACTIVITIES: "activities",
-  PLANS: "plans",
-  PLAN_ITEMS: "planItems",
-};
-
-export const SETTINGS_KEYS = {
-  MUSIC_FOLDER_HANDLE: "musicFolderHandle",
-  MUSIC_FOLDER_NAME: "musicFolderName",
-  LAST_TRACK_NAME: "lastTrackName",
-};
-
-export const DEFAULT_PROFILE_NAME = "Default";
-export const DEFAULT_PLAN_NAME = "Current Plan";
-
-export const SUPPORTED_AUDIO_EXTENSIONS = [
-  ".mp3",
-  ".wav",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".flac",
-];
-
-export const ACTIVITY_TARGET_TYPES = {
-  TRACK: "track",
-  SECTION: "section",
-  CUSTOM: "custom",
-};
 </file>
 
 <file path="src/app/state.js">
@@ -3222,7 +3527,6 @@ export const state = {
   trackStatusText: "No folder selected.",
   tracks: [],
   currentTrack: null,
-  currentTrackUrl: null,
   playbackRate: 1,
   loopEnabled: false,
 
@@ -3242,542 +3546,6 @@ export const state = {
   currentPlanId: null,
   planItems: [],
 };
-</file>
-
-<file path="src/features/sections/sections-controller.js">
-/**
- * @role controller
- * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform rendering internals
- * @notes This controller coordinates with track loading when a section references another track.
- */
-
-import {
-  addPlayLog,
-  addSection,
-  deleteSection,
-  getSectionsByProfile,
-  updateSection,
-} from "../../persistence/db.js";
-import { state } from "../../app/state.js";
-import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
-import {
-  calculateMastery,
-  createSectionLabel,
-  normalizeSectionRecord,
-  sortSections,
-} from "../../shared/utils.js";
-import { renderSections } from "./sections-ui.js";
-
-export function createSectionsController({
-  audio,
-  selectTrackByIndex,
-  refreshSelectionUi,
-  refreshMasteryUi,
-  syncPlaybackUi,
-  renderActivityList,
-  renderPlanList,
-  renderWorkspaceActivityActions,
-  handleError,
-}) {
-  let workspace = null;
-
-  function attachWorkspace(nextWorkspace) {
-    workspace = nextWorkspace;
-    renderSectionList();
-  }
-
-  function detachWorkspace() {
-    workspace = null;
-  }
-
-  async function refreshSections() {
-    if (!state.currentProfileId) {
-      state.allSections = [];
-      state.visibleSections = [];
-      renderSectionList();
-      refreshMasteryUi();
-      renderActivityList();
-      renderPlanList();
-      return;
-    }
-
-    const sections = await getSectionsByProfile(state.currentProfileId);
-    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
-
-    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
-      state.focusedSectionId = null;
-    }
-
-    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      state.currentPlayingSectionId = null;
-    }
-
-    renderSectionList();
-    refreshMasteryUi();
-    renderActivityList();
-    renderPlanList();
-  }
-
-  function getVisibleSections() {
-    const currentTrackName = state.currentTrack?.name;
-
-    if (!currentTrackName) {
-      return [];
-    }
-
-    return state.allSections.filter((section) => section.trackName === currentTrackName);
-  }
-
-  function getActiveVisibleSectionId(visibleSections) {
-    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
-      return state.currentPlayingSectionId;
-    }
-
-    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
-      return state.focusedSectionId;
-    }
-
-    return null;
-  }
-
-  function renderSectionList() {
-    const visibleSections = getVisibleSections();
-    state.visibleSections = visibleSections;
-    renderWorkspaceActivityActions?.();
-
-    if (!workspace) {
-      return;
-    }
-
-    renderSections({
-      elements: workspace,
-      sections: visibleSections,
-      activeSectionId: getActiveVisibleSectionId(visibleSections),
-      currentTrackName: state.currentTrack?.name ?? null,
-      onFocus: (sectionId) => {
-        void focusSection(sectionId);
-      },
-      onPlay: (sectionId) => {
-        void playSectionById(sectionId);
-      },
-      onDelete: (sectionId) => {
-        void removeSection(sectionId);
-      },
-    });
-  }
-
-  async function saveSelectionAsSection() {
-    try {
-      if (!state.currentProfileId) {
-        await showAlert("Select a profile first.");
-        return;
-      }
-
-      if (!state.currentTrack) {
-        await showAlert("Pick a track first.");
-        return;
-      }
-
-      if (state.selection.start == null || state.selection.end == null) {
-        await showAlert("Drag on the waveform to mark a section before saving.");
-        return;
-      }
-
-      const start = Math.min(state.selection.start, state.selection.end);
-      const end = Math.max(state.selection.start, state.selection.end);
-
-      if (Math.abs(end - start) < 0.05) {
-        await showAlert("The selected section is too short.");
-        return;
-      }
-
-      const label = await showPrompt("Optional name for this section:", {
-        title: "Save Section",
-        placeholder: "e.g. Tricky passage, Coda, mm. 32–40",
-      });
-
-      if (label === null) {
-        return;
-      }
-
-      const sectionId = await addSection({
-        profileId: state.currentProfileId,
-        trackName: state.currentTrack.name,
-        label: label.trim() || null,
-        start,
-        end,
-        playCount: 0,
-        mastery: 0,
-        lastPlayed: 0,
-        createdAt: Date.now(),
-      });
-
-      state.focusedSectionId = sectionId;
-      state.currentPlayingSectionId = null;
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function focusSection(sectionId, { armForPlayback = false, cuePlayback = false } = {}) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return false;
-      }
-
-      const ready = await ensureTrackLoadedForSection(section);
-
-      if (!ready) {
-        return false;
-      }
-
-      state.focusedSectionId = section.id;
-      state.currentPlayingSectionId = armForPlayback ? section.id : null;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      if (cuePlayback) {
-        audio.pause();
-        audio.currentTime = section.start;
-        syncPlaybackUi();
-      }
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-      return true;
-    } catch (error) {
-      handleError(error);
-      return false;
-    }
-  }
-
-  async function cueSectionById(sectionId) {
-    return focusSection(sectionId, {
-      armForPlayback: true,
-      cuePlayback: true,
-    });
-  }
-
-  async function ensureTrackLoadedForSection(section) {
-    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-    if (trackIndex === -1) {
-      await showAlert(
-        `Track "${section.trackName}" is not available in the currently selected folder.`,
-      );
-      return false;
-    }
-
-    if (state.currentTrack?.name !== section.trackName) {
-      await selectTrackByIndex(trackIndex, { preserveSelection: true });
-    }
-
-    return true;
-  }
-
-  async function playSectionById(sectionId) {
-    try {
-      const ready = await focusSection(sectionId, {
-        armForPlayback: true,
-        cuePlayback: true,
-      });
-
-      if (!ready) {
-        return;
-      }
-
-      await audio.play();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  async function handleAudioBoundary() {
-    if (!state.currentPlayingSectionId) {
-      return;
-    }
-
-    const activeSection = state.allSections.find(
-      (section) => section.id === state.currentPlayingSectionId,
-    );
-
-    if (!activeSection) {
-      return;
-    }
-
-    if (audio.currentTime < activeSection.end) {
-      return;
-    }
-
-    if (state.loopEnabled) {
-      audio.currentTime = activeSection.start;
-      syncPlaybackUi();
-      return;
-    }
-
-    audio.pause();
-    audio.currentTime = activeSection.end;
-    syncPlaybackUi();
-
-    const completedSectionId = state.currentPlayingSectionId;
-    state.currentPlayingSectionId = null;
-    renderSectionList();
-
-    await finalizeSectionPlay(completedSectionId);
-  }
-
-  async function finalizeSectionPlay(sectionId) {
-    const section = state.allSections.find((item) => item.id === sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    const now = Date.now();
-    const updatedSection = {
-      ...section,
-      playCount: section.playCount + 1,
-      lastPlayed: now,
-      mastery: calculateMastery(section, now),
-    };
-
-    await updateSection(updatedSection);
-    await addPlayLog({
-      sectionId,
-      timestamp: now,
-      speed: audio.playbackRate,
-    });
-
-    state.focusedSectionId = sectionId;
-    await refreshSections();
-  }
-
-  async function removeSection(sectionId) {
-    try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const confirmed = await showConfirm(`Delete section ${createSectionLabel(section)}?`, {
-        title: "Delete Section",
-        confirmLabel: "Delete",
-      });
-
-      if (!confirmed) {
-        return;
-      }
-
-      if (state.currentPlayingSectionId === sectionId) {
-        audio.pause();
-        state.currentPlayingSectionId = null;
-      }
-
-      if (state.focusedSectionId === sectionId) {
-        state.focusedSectionId = null;
-      }
-
-      await deleteSection(sectionId);
-      await refreshSections();
-    } catch (error) {
-      handleError(error);
-    }
-  }
-
-  return {
-    attachWorkspace,
-    detachWorkspace,
-    refreshSections,
-    renderSectionList,
-    saveSelectionAsSection,
-    focusSection,
-    cueSectionById,
-    playSectionById,
-    handleAudioBoundary,
-    removeSection,
-  };
-}
-</file>
-
-<file path="src/app/bootstrap.js">
-/**
- * @role composition-root
- * @owns app bootstrap, shared-service composition, shell event wiring, router initialization, and global error handling
- * @not-owns route markup, feature business logic, or per-route DOM lookup
- * @notes Keep this file thin; route modules own route DOM and route-local listeners.
- */
-
-import { openDatabase } from "../persistence/db.js";
-import { showAlert } from "../shared/dialog.js";
-import { getShellElements, setActiveShellRoute } from "../shared/shell-ui.js";
-import { createActivitiesController } from "../features/activities/activities-controller.js";
-import { createPlansController } from "../features/plans/plans-controller.js";
-import { createProfilesController } from "../features/profiles/profiles-controller.js";
-import { createSectionsController } from "../features/sections/sections-controller.js";
-import { createSelectionController } from "../features/sections/selection-controller.js";
-import { createTracksController } from "../features/tracks/tracks-controller.js";
-import { createRouter, ROUTES } from "./router.js";
-import { renderWorkspaceRoute } from "../routes/workspace/workspace-route.js";
-import { renderPlannerRoute } from "../routes/planner/planner-route.js";
-
-const shell = getShellElements();
-const audio = shell.audio;
-
-let router;
-let sectionsController;
-let activitiesController;
-let plansController;
-
-const selectionController = createSelectionController({
-  renderSectionList: () => sectionsController.renderSectionList(),
-});
-
-const tracksController = createTracksController({
-  audio,
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  renderSectionList: () => sectionsController.renderSectionList(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  renderActivityList: () => activitiesController.renderActivityList(),
-  renderPlanList: () => plansController.renderPlanList(),
-  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
-  handleError,
-});
-
-sectionsController = createSectionsController({
-  audio,
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
-  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
-  syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
-  renderActivityList: () => activitiesController.renderActivityList(),
-  renderPlanList: () => plansController.renderPlanList(),
-  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
-  handleError,
-});
-
-activitiesController = createActivitiesController({
-  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  cueSectionById: (...args) => sectionsController.cueSectionById(...args),
-  navigateToWorkspace: () => router?.navigate(ROUTES.WORKSPACE),
-  addActivityToCurrentPlan: (...args) => plansController.addActivityToCurrentPlan(...args),
-  renderPlanList: () => plansController.renderPlanList(),
-  handleError,
-});
-
-plansController = createPlansController({
-  activateActivity: (...args) => activitiesController.activateActivity(...args),
-  handleError,
-});
-
-const profilesController = createProfilesController({
-  profileSelect: shell.profileSelect,
-  refreshSections: () => sectionsController.refreshSections(),
-  refreshActivities: () => activitiesController.refreshActivities(),
-  refreshPlans: () => plansController.refreshPlans(),
-  handleError,
-});
-
-const services = {
-  audio,
-  shell,
-  selectionController,
-  tracksController,
-  sectionsController,
-  activitiesController,
-  plansController,
-};
-
-router = createRouter({
-  routeMount: shell.routeMount,
-  routes: {
-    [ROUTES.WORKSPACE]: (context) =>
-      renderWorkspaceRoute({
-        ...context,
-        services,
-      }),
-    [ROUTES.PLANNER]: (context) =>
-      renderPlannerRoute({
-        ...context,
-        services,
-      }),
-  },
-  onRouteChange: (route) => {
-    setActiveShellRoute(shell, route);
-  },
-});
-
-bindShellEvents();
-bootstrap().catch(handleError);
-
-async function bootstrap() {
-  await openDatabase();
-  await profilesController.ensureDefaultProfile();
-  await profilesController.refreshProfiles();
-  await tracksController.restoreRememberedFolder();
-  await router.renderCurrentRoute();
-}
-
-function bindShellEvents() {
-  shell.workspaceNav.addEventListener("click", () => {
-    void router.navigate(ROUTES.WORKSPACE);
-  });
-
-  shell.plannerNav.addEventListener("click", () => {
-    void router.navigate(ROUTES.PLANNER);
-  });
-
-  shell.profileSelect.addEventListener("change", async (event) => {
-    profilesController.setCurrentProfileId(Number(event.target.value));
-    await profilesController.refreshProfiles();
-  });
-
-  shell.newProfile.addEventListener("click", () => {
-    void profilesController.createProfile();
-  });
-
-  audio.addEventListener("timeupdate", () => {
-    tracksController.syncWaveformPlaybackPosition();
-    void sectionsController.handleAudioBoundary();
-  });
-
-  audio.addEventListener("loadedmetadata", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("seeked", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("pause", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  audio.addEventListener("ended", () => {
-    tracksController.syncWaveformPlaybackPosition();
-  });
-
-  window.addEventListener("unload", () => {
-    tracksController.releaseCurrentTrackUrl();
-    router.destroy();
-  });
-}
-
-async function handleError(error) {
-  if (!error || error.name === "AbortError") {
-    return;
-  }
-
-  console.error(error);
-  await showAlert(error.message || "Something went wrong.");
-}
 </file>
 
 <file path="src/features/activities/activities-ui.js">
@@ -3996,6 +3764,365 @@ export function renderActivities({
 
     elements.activityList.appendChild(row);
   });
+}
+</file>
+
+<file path="src/features/sections/sections-controller.js">
+/**
+ * @role controller
+ * @owns section CRUD, focused-section navigation, player playback-bound coordination, completion tracking, and track-scoped section browsing
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform-player rendering internals
+ * @notes This controller coordinates with track loading when a section references another track.
+ */
+
+import {
+  addPlayLog,
+  addSection,
+  deleteSection,
+  getSectionsByProfile,
+  updateSection,
+} from "../../persistence/db.js";
+import { state } from "../../app/state.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
+import {
+  calculateMastery,
+  createSectionLabel,
+  normalizeSectionRecord,
+  sortSections,
+} from "../../shared/utils.js";
+import { renderSections } from "./sections-ui.js";
+
+export function createSectionsController({
+  selectTrackByIndex,
+  refreshSelectionUi,
+  refreshMasteryUi,
+  renderActivityList,
+  renderPlanList,
+  renderWorkspaceActivityActions,
+  handleError,
+}) {
+  let workspace = null;
+
+  function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    renderSectionList();
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
+  async function refreshSections() {
+    if (!state.currentProfileId) {
+      state.allSections = [];
+      state.visibleSections = [];
+      renderSectionList();
+      refreshMasteryUi();
+      renderActivityList();
+      renderPlanList();
+      return;
+    }
+
+    const sections = await getSectionsByProfile(state.currentProfileId);
+    state.allSections = sections.map(normalizeSectionRecord).sort(sortSections);
+
+    if (!state.allSections.some((section) => section.id === state.focusedSectionId)) {
+      state.focusedSectionId = null;
+    }
+
+    if (!state.allSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      state.currentPlayingSectionId = null;
+    }
+
+    renderSectionList();
+    refreshMasteryUi();
+    renderActivityList();
+    renderPlanList();
+  }
+
+  function getVisibleSections() {
+    const currentTrackName = state.currentTrack?.name;
+
+    if (!currentTrackName) {
+      return [];
+    }
+
+    return state.allSections.filter((section) => section.trackName === currentTrackName);
+  }
+
+  function getActiveVisibleSectionId(visibleSections) {
+    if (visibleSections.some((section) => section.id === state.currentPlayingSectionId)) {
+      return state.currentPlayingSectionId;
+    }
+
+    if (visibleSections.some((section) => section.id === state.focusedSectionId)) {
+      return state.focusedSectionId;
+    }
+
+    return null;
+  }
+
+  function renderSectionList() {
+    const visibleSections = getVisibleSections();
+    state.visibleSections = visibleSections;
+    renderWorkspaceActivityActions?.();
+
+    if (!workspace) {
+      return;
+    }
+
+    renderSections({
+      elements: workspace,
+      sections: visibleSections,
+      activeSectionId: getActiveVisibleSectionId(visibleSections),
+      currentTrackName: state.currentTrack?.name ?? null,
+      onFocus: (sectionId) => {
+        void focusSection(sectionId);
+      },
+      onPlay: (sectionId) => {
+        void playSectionById(sectionId);
+      },
+      onDelete: (sectionId) => {
+        void removeSection(sectionId);
+      },
+    });
+
+    syncPlayerPlaybackBounds();
+  }
+
+  function syncPlayerPlaybackBounds() {
+    if (!workspace?.player) {
+      return;
+    }
+
+    const activeSection =
+      state.allSections.find((section) => section.id === state.currentPlayingSectionId) ?? null;
+
+    if (!activeSection || activeSection.trackName !== state.currentTrack?.name) {
+      workspace.player.clearPlaybackBounds();
+      return;
+    }
+
+    workspace.player.setPlaybackBounds({
+      start: activeSection.start,
+      end: activeSection.end,
+    });
+  }
+
+  async function saveSelectionAsSection() {
+    try {
+      if (!state.currentProfileId) {
+        await showAlert("Select a profile first.");
+        return;
+      }
+
+      if (!state.currentTrack) {
+        await showAlert("Pick a track first.");
+        return;
+      }
+
+      if (state.selection.start == null || state.selection.end == null) {
+        await showAlert("Drag on the waveform to mark a section before saving.");
+        return;
+      }
+
+      const start = Math.min(state.selection.start, state.selection.end);
+      const end = Math.max(state.selection.start, state.selection.end);
+
+      if (Math.abs(end - start) < 0.05) {
+        await showAlert("The selected section is too short.");
+        return;
+      }
+
+      const label = await showPrompt("Optional name for this section:", {
+        title: "Save Section",
+        placeholder: "e.g. Tricky passage, Coda, mm. 32–40",
+      });
+
+      if (label === null) {
+        return;
+      }
+
+      const sectionId = await addSection({
+        profileId: state.currentProfileId,
+        trackName: state.currentTrack.name,
+        label: label.trim() || null,
+        start,
+        end,
+        playCount: 0,
+        mastery: 0,
+        lastPlayed: 0,
+        createdAt: Date.now(),
+      });
+
+      state.focusedSectionId = sectionId;
+      state.currentPlayingSectionId = null;
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function focusSection(sectionId, { armForPlayback = false, cuePlayback = false } = {}) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return false;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return false;
+      }
+
+      state.focusedSectionId = section.id;
+      state.currentPlayingSectionId = armForPlayback ? section.id : null;
+      state.selection = {
+        start: section.start,
+        end: section.end,
+      };
+
+      if (cuePlayback && workspace?.player) {
+        workspace.player.pause();
+        workspace.player.seek(section.start);
+      }
+
+      refreshSelectionUi();
+      renderSectionList();
+      refreshMasteryUi();
+      return true;
+    } catch (error) {
+      handleError(error);
+      return false;
+    }
+  }
+
+  async function cueSectionById(sectionId) {
+    return focusSection(sectionId, {
+      armForPlayback: true,
+      cuePlayback: true,
+    });
+  }
+
+  async function ensureTrackLoadedForSection(section) {
+    const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
+
+    if (trackIndex === -1) {
+      await showAlert(
+        `Track "${section.trackName}" is not available in the currently selected folder.`,
+      );
+      return false;
+    }
+
+    if (state.currentTrack?.name !== section.trackName) {
+      await selectTrackByIndex(trackIndex, { preserveSelection: true });
+    }
+
+    return true;
+  }
+
+  async function playSectionById(sectionId) {
+    try {
+      const ready = await focusSection(sectionId, {
+        armForPlayback: true,
+        cuePlayback: true,
+      });
+
+      if (!ready) {
+        return;
+      }
+
+      await workspace?.player?.play();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function handlePlaybackBoundsComplete() {
+    if (!state.currentPlayingSectionId) {
+      return;
+    }
+
+    const completedSectionId = state.currentPlayingSectionId;
+    state.currentPlayingSectionId = null;
+    renderSectionList();
+
+    await finalizeSectionPlay(completedSectionId);
+  }
+
+  async function finalizeSectionPlay(sectionId) {
+    const section = state.allSections.find((item) => item.id === sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    const now = Date.now();
+    const updatedSection = {
+      ...section,
+      playCount: section.playCount + 1,
+      lastPlayed: now,
+      mastery: calculateMastery(section, now),
+    };
+
+    await updateSection(updatedSection);
+    await addPlayLog({
+      sectionId,
+      timestamp: now,
+      speed: state.playbackRate,
+    });
+
+    state.focusedSectionId = sectionId;
+    await refreshSections();
+  }
+
+  async function removeSection(sectionId) {
+    try {
+      const section = state.allSections.find((item) => item.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const confirmed = await showConfirm(`Delete section ${createSectionLabel(section)}?`, {
+        title: "Delete Section",
+        confirmLabel: "Delete",
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
+      if (state.currentPlayingSectionId === sectionId) {
+        workspace?.player?.pause();
+        state.currentPlayingSectionId = null;
+      }
+
+      if (state.focusedSectionId === sectionId) {
+        state.focusedSectionId = null;
+      }
+
+      await deleteSection(sectionId);
+      await refreshSections();
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  return {
+    attachWorkspace,
+    detachWorkspace,
+    refreshSections,
+    renderSectionList,
+    saveSelectionAsSection,
+    focusSection,
+    cueSectionById,
+    playSectionById,
+    handlePlaybackBoundsComplete,
+    removeSection,
+  };
 }
 </file>
 
@@ -4814,6 +4941,152 @@ Use `@reqs` for requirement traceability only. Do not use it to redefine product
 - Keep explanations brief unless the user asks for deeper design rationale.
 </file>
 
+<file path="src/app/bootstrap.js">
+/**
+ * @role composition-root
+ * @owns app bootstrap, shared-service composition, shell event wiring, router initialization, and global error handling
+ * @not-owns route markup, feature business logic, or per-route DOM lookup
+ * @notes Keep this file thin; route modules own route DOM and route-local listeners.
+ */
+
+import { openDatabase } from "../persistence/db.js";
+import { showAlert } from "../shared/dialog.js";
+import { getShellElements, setActiveShellRoute } from "../shared/shell-ui.js";
+import { createActivitiesController } from "../features/activities/activities-controller.js";
+import { createPlansController } from "../features/plans/plans-controller.js";
+import { createProfilesController } from "../features/profiles/profiles-controller.js";
+import { createSectionsController } from "../features/sections/sections-controller.js";
+import { createSelectionController } from "../features/sections/selection-controller.js";
+import { createTracksController } from "../features/tracks/tracks-controller.js";
+import { createRouter, ROUTES } from "./router.js";
+import { renderWorkspaceRoute } from "../routes/workspace/workspace-route.js";
+import { renderPlannerRoute } from "../routes/planner/planner-route.js";
+
+const shell = getShellElements();
+
+let router;
+let sectionsController;
+let activitiesController;
+let plansController;
+
+const selectionController = createSelectionController({
+  renderSectionList: () => sectionsController.renderSectionList(),
+});
+
+const tracksController = createTracksController({
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  renderSectionList: () => sectionsController.renderSectionList(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  renderPlanList: () => plansController.renderPlanList(),
+  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
+  handleError,
+});
+
+sectionsController = createSectionsController({
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  refreshSelectionUi: () => selectionController.refreshSelectionUi(),
+  refreshMasteryUi: () => selectionController.refreshMasteryUi(),
+  renderActivityList: () => activitiesController.renderActivityList(),
+  renderPlanList: () => plansController.renderPlanList(),
+  renderWorkspaceActivityActions: () => activitiesController.renderWorkspaceActions(),
+  handleError,
+});
+
+activitiesController = createActivitiesController({
+  selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
+  cueSectionById: (...args) => sectionsController.cueSectionById(...args),
+  navigateToWorkspace: () => router?.navigate(ROUTES.WORKSPACE),
+  addActivityToCurrentPlan: (...args) => plansController.addActivityToCurrentPlan(...args),
+  renderPlanList: () => plansController.renderPlanList(),
+  handleError,
+});
+
+plansController = createPlansController({
+  activateActivity: (...args) => activitiesController.activateActivity(...args),
+  handleError,
+});
+
+const profilesController = createProfilesController({
+  profileSelect: shell.profileSelect,
+  refreshSections: () => sectionsController.refreshSections(),
+  refreshActivities: () => activitiesController.refreshActivities(),
+  refreshPlans: () => plansController.refreshPlans(),
+  handleError,
+});
+
+const services = {
+  shell,
+  selectionController,
+  tracksController,
+  sectionsController,
+  activitiesController,
+  plansController,
+};
+
+router = createRouter({
+  routeMount: shell.routeMount,
+  routes: {
+    [ROUTES.WORKSPACE]: (context) =>
+      renderWorkspaceRoute({
+        ...context,
+        services,
+      }),
+    [ROUTES.PLANNER]: (context) =>
+      renderPlannerRoute({
+        ...context,
+        services,
+      }),
+  },
+  onRouteChange: (route) => {
+    setActiveShellRoute(shell, route);
+  },
+});
+
+bindShellEvents();
+bootstrap().catch(handleError);
+
+async function bootstrap() {
+  await openDatabase();
+  await profilesController.ensureDefaultProfile();
+  await profilesController.refreshProfiles();
+  await tracksController.restoreRememberedFolder();
+  await router.renderCurrentRoute();
+}
+
+function bindShellEvents() {
+  shell.workspaceNav.addEventListener("click", () => {
+    void router.navigate(ROUTES.WORKSPACE);
+  });
+
+  shell.plannerNav.addEventListener("click", () => {
+    void router.navigate(ROUTES.PLANNER);
+  });
+
+  shell.profileSelect.addEventListener("change", async (event) => {
+    profilesController.setCurrentProfileId(Number(event.target.value));
+    await profilesController.refreshProfiles();
+  });
+
+  shell.newProfile.addEventListener("click", () => {
+    void profilesController.createProfile();
+  });
+
+  window.addEventListener("unload", () => {
+    router.destroy();
+  });
+}
+
+async function handleError(error) {
+  if (!error || error.name === "AbortError") {
+    return;
+  }
+
+  console.error(error);
+  await showAlert(error.message || "Something went wrong.");
+}
+</file>
+
 <file path="src/features/activities/activities-controller.js">
 /**
  * @role controller
@@ -5363,10 +5636,6 @@ h2 {
   background: var(--primary-dark);
 }
 
-.global-transport audio {
-  margin-top: 0;
-}
-
 .route-page {
   min-height: 120px;
 }
@@ -5516,9 +5785,56 @@ input:disabled {
   user-select: none;
 }
 
+.waveform-player {
+  display: grid;
+  gap: 12px;
+}
+
+.waveform-player-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.waveform-player-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.waveform-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.waveform-player-speed-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.waveform-player-speed-row input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.waveform-player-loop {
+  min-height: 40px;
+}
+
+.waveform-time {
+  white-space: nowrap;
+}
+
 .waveform-wrap {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 0;
   margin-bottom: 0;
 }
 
@@ -5528,12 +5844,6 @@ input:disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card-alt);
-}
-
-audio {
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 12px;
 }
 
 .mastery-pill {
@@ -5771,6 +6081,16 @@ audio {
   .planner-plan-toolbar {
     align-items: stretch;
   }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
 }
 </file>
 
@@ -5779,7 +6099,7 @@ audio {
 <!--
   @role document-shell
   @owns static shell markup, semantic structure, persistent app chrome, and script/style entrypoints
-  @not-owns route rendering, runtime behavior, or styling rules beyond structural classes and ids
+  @not-owns route rendering, route-local playback UI, or styling rules beyond structural classes and ids
   @notes Keep this file markup-only.
 -->
 <html lang="en">
@@ -5806,20 +6126,6 @@ audio {
       </div>
     </div>
   </section>
-
-  <div class="container app-shell">
-    <section class="card global-transport">
-      <div class="section-header">
-        <div>
-          <h2>Transport</h2>
-          <p class="small">
-            Playback stays available while moving between the workspace and planner.
-          </p>
-        </div>
-      </div>
-
-      <audio id="audio" controls></audio>
-    </section>
 
     <main id="routeMount"></main>
   </div>

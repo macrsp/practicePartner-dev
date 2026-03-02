@@ -1,7 +1,7 @@
 /**
  * @role controller
- * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform rendering internals
+ * @owns section CRUD, focused-section navigation, player playback-bound coordination, completion tracking, and track-scoped section browsing
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform-player rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
 
@@ -23,11 +23,9 @@ import {
 import { renderSections } from "./sections-ui.js";
 
 export function createSectionsController({
-  audio,
   selectTrackByIndex,
   refreshSelectionUi,
   refreshMasteryUi,
-  syncPlaybackUi,
   renderActivityList,
   renderPlanList,
   renderWorkspaceActivityActions,
@@ -118,6 +116,27 @@ export function createSectionsController({
         void removeSection(sectionId);
       },
     });
+
+    syncPlayerPlaybackBounds();
+  }
+
+  function syncPlayerPlaybackBounds() {
+    if (!workspace?.player) {
+      return;
+    }
+
+    const activeSection =
+      state.allSections.find((section) => section.id === state.currentPlayingSectionId) ?? null;
+
+    if (!activeSection || activeSection.trackName !== state.currentTrack?.name) {
+      workspace.player.clearPlaybackBounds();
+      return;
+    }
+
+    workspace.player.setPlaybackBounds({
+      start: activeSection.start,
+      end: activeSection.end,
+    });
   }
 
   async function saveSelectionAsSection() {
@@ -195,10 +214,9 @@ export function createSectionsController({
         end: section.end,
       };
 
-      if (cuePlayback) {
-        audio.pause();
-        audio.currentTime = section.start;
-        syncPlaybackUi();
+      if (cuePlayback && workspace?.player) {
+        workspace.player.pause();
+        workspace.player.seek(section.start);
       }
 
       refreshSelectionUi();
@@ -246,38 +264,16 @@ export function createSectionsController({
         return;
       }
 
-      await audio.play();
+      await workspace?.player?.play();
     } catch (error) {
       handleError(error);
     }
   }
 
-  async function handleAudioBoundary() {
+  async function handlePlaybackBoundsComplete() {
     if (!state.currentPlayingSectionId) {
       return;
     }
-
-    const activeSection = state.allSections.find(
-      (section) => section.id === state.currentPlayingSectionId,
-    );
-
-    if (!activeSection) {
-      return;
-    }
-
-    if (audio.currentTime < activeSection.end) {
-      return;
-    }
-
-    if (state.loopEnabled) {
-      audio.currentTime = activeSection.start;
-      syncPlaybackUi();
-      return;
-    }
-
-    audio.pause();
-    audio.currentTime = activeSection.end;
-    syncPlaybackUi();
 
     const completedSectionId = state.currentPlayingSectionId;
     state.currentPlayingSectionId = null;
@@ -305,7 +301,7 @@ export function createSectionsController({
     await addPlayLog({
       sectionId,
       timestamp: now,
-      speed: audio.playbackRate,
+      speed: state.playbackRate,
     });
 
     state.focusedSectionId = sectionId;
@@ -330,7 +326,7 @@ export function createSectionsController({
       }
 
       if (state.currentPlayingSectionId === sectionId) {
-        audio.pause();
+        workspace?.player?.pause();
         state.currentPlayingSectionId = null;
       }
 
@@ -354,7 +350,7 @@ export function createSectionsController({
     focusSection,
     cueSectionById,
     playSectionById,
-    handleAudioBoundary,
+    handlePlaybackBoundsComplete,
     removeSection,
   };
 }

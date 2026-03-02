@@ -1,13 +1,13 @@
 /**
  * @role controller
- * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, audio source loading, playback-rate updates, and waveform playback sync
- * @not-owns section CRUD, activity CRUD, plan CRUD, profile management, or low-level IndexedDB helpers
+ * @owns folder picking, remembered-folder restore/reconnect, track enumeration, track selection, route-local player loading, and playback-rate persistence
+ * @not-owns section CRUD, activity CRUD, plan CRUD, profile management, or waveform-player rendering internals
  * @notes Keep folder persistence delegated to music-folder-store.js.
  */
 
 import { state } from "../../app/state.js";
 import { compareByName, isSupportedAudioFile, summarizeTrackCount } from "../../shared/utils.js";
-import { renderTracks, setSpeedDisplay, setTrackCount } from "./tracks-ui.js";
+import { renderTracks, setTrackCount } from "./tracks-ui.js";
 import {
   getRememberedMusicFolder,
   rememberLastTrackName,
@@ -15,7 +15,6 @@ import {
 } from "./music-folder-store.js";
 
 export function createTracksController({
-  audio,
   refreshSelectionUi,
   renderSectionList,
   refreshMasteryUi,
@@ -30,11 +29,23 @@ export function createTracksController({
     workspace = nextWorkspace;
     renderWorkspaceUi();
 
-    if (state.currentTrack && workspace?.waveform) {
-      await workspace.waveform.loadFile(state.currentTrack.file);
-      syncWaveformPlaybackPosition();
-    } else if (workspace?.waveform) {
-      workspace.waveform.clear();
+    workspace.player.setPlaybackRate(state.playbackRate);
+    workspace.player.setLoopEnabled(state.loopEnabled);
+
+    if (state.currentTrack) {
+      await workspace.player.loadFile(state.currentTrack.file);
+
+      if (state.currentPlayingSectionId) {
+        const activeSection = state.allSections.find(
+          (section) => section.id === state.currentPlayingSectionId,
+        );
+
+        if (activeSection) {
+          workspace.player.seek(activeSection.start);
+        }
+      }
+    } else {
+      workspace.player.clear();
     }
   }
 
@@ -179,7 +190,6 @@ export function createTracksController({
       return;
     }
 
-    audio.pause();
     state.currentPlayingSectionId = null;
     state.currentTrack = track;
 
@@ -190,19 +200,16 @@ export function createTracksController({
 
     renderWorkspaceUi();
 
-    await loadAudioFile(track.file);
+    if (workspace?.player) {
+      await workspace.player.loadFile(track.file);
 
-    if (workspace?.waveform) {
-      await workspace.waveform.loadFile(track.file);
+      if (Number.isFinite(cueAtTime)) {
+        workspace.player.seek(Math.max(0, cueAtTime));
+      }
     }
 
     await rememberLastTrackName(track.name);
 
-    if (Number.isFinite(cueAtTime)) {
-      audio.currentTime = Math.max(0, cueAtTime);
-    }
-
-    syncWaveformPlaybackPosition();
     refreshSelectionUi();
     renderSectionList();
     refreshMasteryUi();
@@ -211,18 +218,13 @@ export function createTracksController({
   }
 
   function clearCurrentTrack() {
-    audio.pause();
     state.currentPlayingSectionId = null;
     state.currentTrack = null;
     state.selection = { start: null, end: null };
     state.focusedSectionId = null;
 
-    releaseCurrentTrackUrl();
-    audio.removeAttribute("src");
-    audio.load();
-
-    if (workspace?.waveform) {
-      workspace.waveform.clear();
+    if (workspace?.player) {
+      workspace.player.clear();
     }
 
     renderWorkspaceUi();
@@ -233,63 +235,12 @@ export function createTracksController({
     renderPlanList();
   }
 
-  async function loadAudioFile(file) {
-    releaseCurrentTrackUrl();
-
-    const objectUrl = URL.createObjectURL(file);
-    state.currentTrackUrl = objectUrl;
-
-    await new Promise((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        resolve();
-      };
-
-      const onError = () => {
-        cleanup();
-        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
-      };
-
-      const cleanup = () => {
-        audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-        audio.removeEventListener("error", onError);
-      };
-
-      audio.addEventListener("loadedmetadata", onLoadedMetadata);
-      audio.addEventListener("error", onError);
-
-      audio.src = objectUrl;
-      audio.load();
-    });
-
-    audio.playbackRate = state.playbackRate;
-  }
-
-  function releaseCurrentTrackUrl() {
-    if (!state.currentTrackUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(state.currentTrackUrl);
-    state.currentTrackUrl = null;
-  }
-
   function setSpeed(value) {
     state.playbackRate = value;
-    audio.playbackRate = value;
 
-    if (workspace) {
-      workspace.speed.value = String(value);
-      setSpeedDisplay(workspace, value);
+    if (workspace?.player) {
+      workspace.player.setPlaybackRate(value);
     }
-  }
-
-  function syncWaveformPlaybackPosition() {
-    if (!workspace?.waveform) {
-      return;
-    }
-
-    workspace.waveform.setPlaybackTime(Number.isFinite(audio.currentTime) ? audio.currentTime : null);
   }
 
   function renderWorkspaceUi() {
@@ -299,8 +250,6 @@ export function createTracksController({
 
     renderTracks(workspace, state.tracks, state.currentTrack?.name ?? null);
     setTrackCount(workspace, state.trackStatusText);
-    workspace.speed.value = String(state.playbackRate);
-    setSpeedDisplay(workspace, state.playbackRate);
     renderWorkspaceActivityActions?.();
   }
 
@@ -311,8 +260,6 @@ export function createTracksController({
     pickMusicFolder,
     selectTrackByIndex,
     clearCurrentTrack,
-    releaseCurrentTrackUrl,
     setSpeed,
-    syncWaveformPlaybackPosition,
   };
 }

@@ -1,11 +1,11 @@
-/**
+\/**
  * @role renderer
- * @owns waveform decoding, peak caching, canvas rendering, drag selection, and playback-position visualization
- * @not-owns audio playback control, persistence, or section business rules
+ * @owns route-local audio element lifecycle, waveform decoding, peak caching, canvas rendering, embedded playback controls, seeking, loop state, playback-rate UI, selection display, and optional playback-bound enforcement
+ * @not-owns persistence, saved-section business rules, or workspace route orchestration
  * @notes Keep redraws efficient; cache derived waveform data when possible.
  */
 
-import { clamp } from "./utils.js";
+import { clamp, formatTime } from "./utils.js";
 
 const COLORS = {
   background: "#f8fafc",
@@ -17,50 +17,252 @@ const COLORS = {
   text: "#6b7280",
 };
 
-export function createWaveform({ mountEl, onSelectionChange }) {
+let playerInstanceCount = 0;
+
+export function createWaveformPlayer({
+  mountEl,
+  initialPlaybackRate = 1,
+  initialLoopEnabled = false,
+  onSelectionChange,
+  onPlaybackRateChange,
+  onLoopChange,
+  onPlaybackBoundsComplete,
+}) {
+  const playerId = ++playerInstanceCount;
+  const speedInputId = `waveformPlayerSpeed-${playerId}`;
+  const loopToggleId = `waveformPlayerLoop-${playerId}`;
+
+  const root = document.createElement("div");
+  root.className = "waveform-player";
+  root.innerHTML = `
+    <div class="waveform-player-toolbar">
+      <div class="section-actions">
+        <button type="button" class="secondary" data-player-el="playPause">Play</button>
+      </div>
+
+      <div class="small waveform-time" data-player-el="timeDisplay">0:00.00 / 0:00.00</div>
+    </div>
+
+    <div class="waveform-wrap" data-player-el="waveformMount"></div>
+
+    <div class="waveform-player-controls">
+      <div class="mastery-pill" data-player-el="abDisplay">A — • B —</div>
+
+      <div class="waveform-player-field">
+        <label for="${speedInputId}">Playback speed</label>
+        <div class="waveform-player-speed-row">
+          <input
+            id="${speedInputId}"
+            data-player-el="speed"
+            type="range"
+            min="0.5"
+            max="1.5"
+            step="0.05"
+            value="${String(initialPlaybackRate)}"
+            aria-label="Playback speed"
+          />
+          <span class="mastery-pill" data-player-el="speedVal">${Number(initialPlaybackRate).toFixed(2)}×</span>
+        </div>
+      </div>
+
+      <label class="checkbox-label waveform-player-loop" for="${loopToggleId}">
+        <input
+          id="${loopToggleId}"
+          data-player-el="loopToggle"
+          type="checkbox"
+          ${initialLoopEnabled ? "checked" : ""}
+        />
+        Loop section playback
+      </label>
+    </div>
+  `;
+
+  mountEl.appendChild(root);
+
+  const playPauseButton = getRequiredElement(root, "playPause");
+  const timeDisplay = getRequiredElement(root, "timeDisplay");
+  const abDisplay = getRequiredElement(root, "abDisplay");
+  const speedInput = getRequiredElement(root, "speed");
+  const speedVal = getRequiredElement(root, "speedVal");
+  const loopToggle = getRequiredElement(root, "loopToggle");
+  const waveformMount = getRequiredElement(root, "waveformMount");
+
   const canvas = document.createElement("canvas");
   canvas.className = "waveform-canvas";
   canvas.height = 140;
   canvas.style.touchAction = "none";
-  mountEl.appendChild(canvas);
+  waveformMount.appendChild(canvas);
+
+  const audio = document.createElement("audio");
+  audio.preload = "metadata";
+  audio.hidden = true;
+  root.appendChild(audio);
 
   const ctx = canvas.getContext("2d");
 
+  let objectUrl = null;
   let audioBuffer = null;
   let selection = { start: null, end: null };
-  let playbackTime = null;
+  let playbackBounds = { start: null, end: null };
   let dragging = false;
+  let pointerStartX = 0;
+  let pointerStartTime = 0;
   let cachedPeaks = null;
   let cachedPeaksWidth = 0;
+  let playbackRate = Number(initialPlaybackRate) || 1;
+  let loopEnabled = Boolean(initialLoopEnabled);
 
   const handleResize = () => {
     resize();
   };
 
+  const handlePlayPauseClick = () => {
+    if (audio.paused) {
+      void play();
+      return;
+    }
+
+    pause();
+  };
+
+  const handleSpeedInput = (event) => {
+    const nextValue = Number(event.target.value);
+    setPlaybackRate(nextValue, { notify: true });
+  };
+
+  const handleLoopInput = (event) => {
+    const enabled = Boolean(event.target.checked);
+    setLoopEnabled(enabled, { notify: true });
+  };
+
+  const handleAudioTimeUpdate = () => {
+    syncFromAudio();
+    enforcePlaybackBounds();
+  };
+
+  const handleAudioMetadata = () => {
+    syncFromAudio();
+    draw();
+    updateControlsDisabled();
+  };
+
+  const handleAudioPlay = () => {
+    updatePlayPauseButton();
+  };
+
+  const handleAudioPause = () => {
+    syncFromAudio();
+    updatePlayPauseButton();
+  };
+
+  const handleAudioEnded = () => {
+    syncFromAudio();
+    updatePlayPauseButton();
+  };
+
+  const handleAudioSeeked = () => {
+    syncFromAudio();
+    enforcePlaybackBounds();
+  };
+
   window.addEventListener("resize", handleResize);
+  playPauseButton.addEventListener("click", handlePlayPauseClick);
+  speedInput.addEventListener("input", handleSpeedInput);
+  loopToggle.addEventListener("change", handleLoopInput);
+
+  audio.addEventListener("timeupdate", handleAudioTimeUpdate);
+  audio.addEventListener("loadedmetadata", handleAudioMetadata);
+  audio.addEventListener("play", handleAudioPlay);
+  audio.addEventListener("pause", handleAudioPause);
+  audio.addEventListener("ended", handleAudioEnded);
+  audio.addEventListener("seeked", handleAudioSeeked);
 
   canvas.addEventListener("pointerdown", handlePointerDown);
   canvas.addEventListener("pointermove", handlePointerMove);
   canvas.addEventListener("pointerup", handlePointerUp);
-  canvas.addEventListener("pointerleave", handlePointerUp);
+  canvas.addEventListener("pointercancel", handlePointerUp);
 
   resize();
+  setPlaybackRate(playbackRate);
+  setLoopEnabled(loopEnabled);
+  setSelection(selection);
+  updateTimeDisplay();
+  updatePlayPauseButton();
+  updateControlsDisabled();
 
   function getDuration() {
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      return audio.duration;
+    }
+
     return audioBuffer?.duration ?? 0;
   }
 
-  function getNormalizedSelection() {
-    const duration = getDuration();
+  function getCurrentTime() {
+    return Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  }
+
+  function normalizeTime(value, duration = getDuration()) {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    if (duration > 0) {
+      return clamp(value, 0, duration);
+    }
+
+    return Math.max(0, value);
+  }
+
+  function normalizeRange(range) {
     return {
-      start: Number.isFinite(selection.start) ? clamp(selection.start, 0, duration) : null,
-      end: Number.isFinite(selection.end) ? clamp(selection.end, 0, duration) : null,
+      start: normalizeTime(range?.start),
+      end: normalizeTime(range?.end),
     };
   }
 
-  function getNormalizedPlaybackTime() {
-    const duration = getDuration();
-    return Number.isFinite(playbackTime) ? clamp(playbackTime, 0, duration) : null;
+  function getNormalizedSelection() {
+    return normalizeRange(selection);
+  }
+
+  function getNormalizedPlaybackBounds() {
+    return normalizeRange(playbackBounds);
+  }
+
+  function updateControlsDisabled() {
+    const hasTrack = Boolean(audio.getAttribute("src"));
+    playPauseButton.disabled = !hasTrack;
+  }
+
+  function updatePlayPauseButton() {
+    playPauseButton.textContent = audio.paused ? "Play" : "Pause";
+  }
+
+  function updateTimeDisplay() {
+    timeDisplay.textContent = `${formatTime(getCurrentTime())} / ${formatTime(getDuration())}`;
+  }
+
+  function updateSelectionDisplay() {
+    const current = getNormalizedSelection();
+    abDisplay.textContent = `A ${formatTime(current.start)} • B ${formatTime(current.end)}`;
+  }
+
+  function updateSpeedDisplay() {
+    speedVal.textContent = `${playbackRate.toFixed(2)}×`;
+  }
+
+  function syncFromAudio() {
+    updateTimeDisplay();
+    draw();
+  }
+
+  function releaseObjectUrl() {
+    if (!objectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
   }
 
   function drawPlaceholder(message) {
@@ -95,7 +297,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   }
 
   function resize() {
-    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
+    canvas.width = Math.max(320, Math.floor(waveformMount.clientWidth || 320));
     canvas.height = 140;
     draw();
   }
@@ -147,7 +349,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
   function draw() {
     if (!audioBuffer) {
-      drawPlaceholder("Pick a track to see the waveform.");
+      drawPlaceholder(audio.getAttribute("src") ? "Loading waveform…" : "Pick a track to see the waveform.");
       return;
     }
 
@@ -189,7 +391,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   }
 
   function drawPlaybackRegion() {
-    const currentTime = getNormalizedPlaybackTime();
+    const currentTime = normalizeTime(getCurrentTime());
 
     if (currentTime == null) {
       return;
@@ -206,7 +408,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   }
 
   function drawPlayhead() {
-    const currentTime = getNormalizedPlaybackTime();
+    const currentTime = normalizeTime(getCurrentTime());
 
     if (currentTime == null) {
       return;
@@ -253,6 +455,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
       end: Number.isFinite(nextSelection?.end) ? nextSelection.end : null,
     };
 
+    updateSelectionDisplay();
     draw();
 
     if (notify) {
@@ -260,57 +463,206 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     }
   }
 
-  function setPlaybackTime(nextPlaybackTime) {
-    playbackTime = Number.isFinite(nextPlaybackTime) ? nextPlaybackTime : null;
-    draw();
+  function setPlaybackBounds(nextBounds) {
+    playbackBounds = {
+      start: Number.isFinite(nextBounds?.start) ? nextBounds.start : null,
+      end: Number.isFinite(nextBounds?.end) ? nextBounds.end : null,
+    };
+  }
+
+  function clearPlaybackBounds() {
+    setPlaybackBounds({ start: null, end: null });
+  }
+
+  function setPlaybackRate(value, { notify = false } = {}) {
+    const normalized = clamp(Number(value) || 1, 0.5, 1.5);
+    playbackRate = normalized;
+    speedInput.value = String(normalized);
+    audio.playbackRate = normalized;
+    updateSpeedDisplay();
+
+    if (notify) {
+      onPlaybackRateChange?.(normalized);
+    }
+  }
+
+  function setLoopEnabled(enabled, { notify = false } = {}) {
+    loopEnabled = Boolean(enabled);
+    loopToggle.checked = loopEnabled;
+
+    if (notify) {
+      onLoopChange?.(loopEnabled);
+    }
   }
 
   async function loadFile(file) {
+    pause();
+    releaseObjectUrl();
+
     drawPlaceholder("Loading waveform…");
 
+    const nextObjectUrl = URL.createObjectURL(file);
+    objectUrl = nextObjectUrl;
+
+    const loadMetadataPromise = new Promise((resolve, reject) => {
+      const handleLoadedMetadata = () => {
+        cleanup();
+        resolve();
+      };
+
+      const handleError = () => {
+        cleanup();
+        reject(audio.error || new Error(`Unable to load audio file "${file.name}".`));
+      };
+
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+        audio.removeEventListener("error", handleError);
+      };
+
+      audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.addEventListener("error", handleError);
+
+      audio.src = nextObjectUrl;
+      audio.load();
+    });
+
+    const decodePromise = decodeAudioFile(file);
+
+    const [, decodedBuffer] = await Promise.all([loadMetadataPromise, decodePromise]);
+
+    audioBuffer = decodedBuffer;
+    cachedPeaks = null;
+    cachedPeaksWidth = 0;
+    audio.currentTime = 0;
+    audio.playbackRate = playbackRate;
+
+    updateControlsDisabled();
+    updateTimeDisplay();
+    draw();
+  }
+
+  async function decodeAudioFile(file) {
     const arrayBuffer = await file.arrayBuffer();
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
     if (!AudioContextCtor) {
-      audioBuffer = null;
-      cachedPeaks = null;
-      cachedPeaksWidth = 0;
-      drawPlaceholder("Waveform preview is unavailable in this browser.");
-      return;
+      return null;
     }
 
     const audioContext = new AudioContextCtor();
 
     try {
-      audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-      playbackTime = 0;
-      cachedPeaks = null;
-      cachedPeaksWidth = 0;
+      return await audioContext.decodeAudioData(arrayBuffer.slice(0));
     } finally {
       if (audioContext.close) {
         await audioContext.close();
       }
     }
-
-    draw();
   }
 
   function clear() {
+    pause();
+    releaseObjectUrl();
+
+    audio.removeAttribute("src");
+    audio.load();
+
     audioBuffer = null;
     selection = { start: null, end: null };
-    playbackTime = null;
+    playbackBounds = { start: null, end: null };
     cachedPeaks = null;
     cachedPeaksWidth = 0;
+
+    updateSelectionDisplay();
+    updateTimeDisplay();
+    updateControlsDisabled();
+    updatePlayPauseButton();
     draw();
   }
 
+  async function play() {
+    if (!audio.getAttribute("src")) {
+      return;
+    }
+
+    const bounds = getNormalizedPlaybackBounds();
+
+    if (bounds.start != null && bounds.end != null) {
+      const currentTime = getCurrentTime();
+
+      if (currentTime < bounds.start || currentTime >= bounds.end) {
+        audio.currentTime = bounds.start;
+      }
+    }
+
+    await audio.play();
+  }
+
+  function pause() {
+    audio.pause();
+  }
+
+  function seek(time) {
+    const duration = getDuration();
+
+    if (!duration) {
+      return;
+    }
+
+    audio.currentTime = clamp(Number(time) || 0, 0, duration);
+    syncFromAudio();
+  }
+
+  function enforcePlaybackBounds() {
+    const bounds = getNormalizedPlaybackBounds();
+
+    if (bounds.start == null || bounds.end == null) {
+      return;
+    }
+
+    if (getCurrentTime() < bounds.end) {
+      return;
+    }
+
+    if (loopEnabled) {
+      audio.currentTime = bounds.start;
+      syncFromAudio();
+      return;
+    }
+
+    const wasPlaying = !audio.paused;
+    pause();
+    audio.currentTime = bounds.end;
+    syncFromAudio();
+
+    if (wasPlaying) {
+      onPlaybackBoundsComplete?.({ ...bounds });
+    }
+  }
+
   function destroy() {
+    pause();
+    releaseObjectUrl();
+
     window.removeEventListener("resize", handleResize);
+    playPauseButton.removeEventListener("click", handlePlayPauseClick);
+    speedInput.removeEventListener("input", handleSpeedInput);
+    loopToggle.removeEventListener("change", handleLoopInput);
+
+    audio.removeEventListener("timeupdate", handleAudioTimeUpdate);
+    audio.removeEventListener("loadedmetadata", handleAudioMetadata);
+    audio.removeEventListener("play", handleAudioPlay);
+    audio.removeEventListener("pause", handleAudioPause);
+    audio.removeEventListener("ended", handleAudioEnded);
+    audio.removeEventListener("seeked", handleAudioSeeked);
+
     canvas.removeEventListener("pointerdown", handlePointerDown);
     canvas.removeEventListener("pointermove", handlePointerMove);
     canvas.removeEventListener("pointerup", handlePointerUp);
-    canvas.removeEventListener("pointerleave", handlePointerUp);
-    canvas.remove();
+    canvas.removeEventListener("pointercancel", handlePointerUp);
+
+    root.remove();
   }
 
   function handlePointerDown(event) {
@@ -319,30 +671,64 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     }
 
     canvas.setPointerCapture(event.pointerId);
-    dragging = true;
+    dragging = false;
+    pointerStartX = event.clientX;
 
     const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
-
-    setSelection({ start: time, end: time }, { notify: true });
+    pointerStartTime = xToTime(event.clientX - rect.left);
   }
 
   function handlePointerMove(event) {
-    if (!dragging || !audioBuffer) {
+    if (!canvas.hasPointerCapture(event.pointerId) || !audioBuffer) {
       return;
     }
 
     const rect = canvas.getBoundingClientRect();
-    const time = xToTime(event.clientX - rect.left);
+    const nextTime = xToTime(event.clientX - rect.left);
 
-    setSelection({ start: selection.start, end: time }, { notify: true });
+    if (!dragging && Math.abs(event.clientX - pointerStartX) >= 4) {
+      dragging = true;
+    }
+
+    if (!dragging) {
+      return;
+    }
+
+    setSelection(
+      {
+        start: pointerStartTime,
+        end: nextTime,
+      },
+      { notify: true },
+    );
   }
 
   function handlePointerUp(event) {
-    if (dragging && canvas.hasPointerCapture(event.pointerId)) {
+    if (canvas.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
 
+    if (!audioBuffer) {
+      dragging = false;
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const nextTime = xToTime(event.clientX - rect.left);
+
+    if (dragging) {
+      setSelection(
+        {
+          start: pointerStartTime,
+          end: nextTime,
+        },
+        { notify: true },
+      );
+      dragging = false;
+      return;
+    }
+
+    seek(nextTime);
     dragging = false;
   }
 
@@ -350,8 +736,25 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     clear,
     destroy,
     loadFile,
-    setPlaybackTime,
+    play,
+    pause,
+    seek,
     setSelection,
     getSelection: () => ({ ...getNormalizedSelection() }),
+    setPlaybackBounds,
+    clearPlaybackBounds,
+    setPlaybackRate,
+    setLoopEnabled,
+    getCurrentTime,
   };
+}
+
+function getRequiredElement(root, name) {
+  const element = root.querySelector(`[data-player-el="${name}"]`);
+
+  if (!element) {
+    throw new Error(`Missing waveform player element: ${name}`);
+  }
+
+  return element;
 }

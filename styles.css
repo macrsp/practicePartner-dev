@@ -117,10 +117,6 @@ h2 {
   background: var(--primary-dark);
 }
 
-.global-transport audio {
-  margin-top: 0;
-}
-
 .route-page {
   min-height: 120px;
 }
@@ -270,9 +266,56 @@ input:disabled {
   user-select: none;
 }
 
+.waveform-player {
+  display: grid;
+  gap: 12px;
+}
+
+.waveform-player-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.waveform-player-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.waveform-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.waveform-player-speed-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.waveform-player-speed-row input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.waveform-player-loop {
+  min-height: 40px;
+}
+
+.waveform-time {
+  white-space: nowrap;
+}
+
 .waveform-wrap {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 0;
   margin-bottom: 0;
 }
 
@@ -282,12 +325,6 @@ input:disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card-alt);
-}
-
-audio {
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 12px;
 }
 
 .mastery-pill {
@@ -524,5 +561,15 @@ audio {
 
   .planner-plan-toolbar {
     align-items: stretch;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
   }
 }
