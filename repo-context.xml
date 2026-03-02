@@ -96,242 +96,6 @@ styles.css
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/features/plans/plans-controller.js">
-/**
- * @role controller
- * @owns current-plan bootstrap, current-plan item refresh, add/remove plan item orchestration, and planner current-plan rendering
- * @not-owns activity CRUD, activity launch behavior internals, or low-level IndexedDB helpers
- * @notes The current UX exposes one persisted current/default plan per profile while keeping the data model open to multiple plans later.
- */
-
-import { state } from "../../app/state.js";
-import { DEFAULT_PLAN_NAME } from "../../shared/constants.js";
-import {
-  addPlan,
-  addPlanItem,
-  deletePlanItem,
-  getPlanItemsByPlanId,
-  getPlansByProfile,
-  updatePlan,
-} from "../../persistence/plan-store.js";
-import { renderPlan } from "./plans-ui.js";
-
-export function createPlansController({ activateActivity, handleError } = {}) {
-  let planner = null;
-
-  function attachPlanner(nextPlanner) {
-    planner = nextPlanner;
-    renderPlanList();
-  }
-
-  function detachPlanner() {
-    planner = null;
-  }
-
-  async function refreshPlans() {
-    try {
-      if (!state.currentProfileId) {
-        state.plans = [];
-        state.currentPlanId = null;
-        state.planItems = [];
-        renderPlanList();
-        return null;
-      }
-
-      let plans = await getPlansByProfile(state.currentProfileId);
-
-      if (!plans.length) {
-        const now = Date.now();
-
-        await addPlan({
-          profileId: state.currentProfileId,
-          name: DEFAULT_PLAN_NAME,
-          isDefault: true,
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        plans = await getPlansByProfile(state.currentProfileId);
-      }
-
-      state.plans = [...plans].sort(sortPlans);
-
-      if (!state.plans.some((plan) => plan.id === state.currentPlanId)) {
-        state.currentPlanId =
-          state.plans.find((plan) => plan.isDefault)?.id ?? state.plans[0]?.id ?? null;
-      }
-
-      await refreshPlanItems();
-      return getCurrentPlan();
-    } catch (error) {
-      handleError?.(error);
-      return null;
-    }
-  }
-
-  async function refreshPlanItems() {
-    if (!state.currentPlanId) {
-      state.planItems = [];
-      renderPlanList();
-      return [];
-    }
-
-    const planItems = await getPlanItemsByPlanId(state.currentPlanId);
-    state.planItems = [...planItems].sort(sortPlanItems);
-    renderPlanList();
-    return state.planItems;
-  }
-
-  function renderPlanList() {
-    if (!planner) {
-      return;
-    }
-
-    const activitiesById = new Map(state.activities.map((activity) => [activity.id, activity]));
-    const sectionsById = new Map(state.allSections.map((section) => [section.id, section]));
-
-    renderPlan({
-      elements: planner,
-      currentProfileId: state.currentProfileId,
-      plan: getCurrentPlan(),
-      planItems: state.planItems,
-      activitiesById,
-      tracks: state.tracks,
-      sectionsById,
-      onUseActivity: (activityId) => {
-        void activateActivity?.(activityId);
-      },
-      onRemoveItem: (planItemId) => {
-        void removePlanItem(planItemId);
-      },
-    });
-  }
-
-  async function addActivityToCurrentPlan(activityId) {
-    try {
-      const activity = state.activities.find((item) => item.id === activityId);
-
-      if (!activity) {
-        throw new Error("That activity is no longer available.");
-      }
-
-      const currentPlan = await ensureCurrentPlan();
-      const nextPosition = getNextPlanItemPosition(state.planItems);
-      const now = Date.now();
-
-      await addPlanItem({
-        planId: currentPlan.id,
-        activityId,
-        position: nextPosition,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await touchCurrentPlan(currentPlan);
-      await refreshPlanItems();
-    } catch (error) {
-      handleError?.(error);
-    }
-  }
-
-  async function removePlanItem(planItemId) {
-    try {
-      const planItem = state.planItems.find((item) => item.id === planItemId);
-
-      if (!planItem) {
-        return;
-      }
-
-      const currentPlan = getCurrentPlan();
-
-      await deletePlanItem(planItemId);
-
-      if (currentPlan) {
-        await touchCurrentPlan(currentPlan);
-      }
-
-      await refreshPlanItems();
-    } catch (error) {
-      handleError?.(error);
-    }
-  }
-
-  async function ensureCurrentPlan() {
-    if (!state.currentProfileId) {
-      throw new Error("Select a profile first.");
-    }
-
-    let currentPlan = getCurrentPlan();
-
-    if (currentPlan) {
-      return currentPlan;
-    }
-
-    await refreshPlans();
-    currentPlan = getCurrentPlan();
-
-    if (!currentPlan) {
-      throw new Error("Unable to load the current plan.");
-    }
-
-    return currentPlan;
-  }
-
-  async function touchCurrentPlan(plan) {
-    await updatePlan({
-      ...plan,
-      updatedAt: Date.now(),
-    });
-
-    state.plans = state.plans
-      .map((item) => (item.id === plan.id ? { ...item, updatedAt: Date.now() } : item))
-      .sort(sortPlans);
-  }
-
-  function getCurrentPlan() {
-    return state.plans.find((plan) => plan.id === state.currentPlanId) ?? null;
-  }
-
-  return {
-    attachPlanner,
-    detachPlanner,
-    refreshPlans,
-    refreshPlanItems,
-    renderPlanList,
-    addActivityToCurrentPlan,
-    removePlanItem,
-  };
-}
-
-function sortPlans(a, b) {
-  return (
-    Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)) ||
-    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
-    a.name.localeCompare(b.name, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }) ||
-    a.id - b.id
-  );
-}
-
-function sortPlanItems(a, b) {
-  return (
-    (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER) ||
-    (a.createdAt ?? 0) - (b.createdAt ?? 0) ||
-    a.id - b.id
-  );
-}
-
-function getNextPlanItemPosition(planItems) {
-  if (!planItems.length) {
-    return 0;
-  }
-
-  return Math.max(...planItems.map((item) => item.position ?? -1)) + 1;
-}
-</file>
-
 <file path="src/features/tracks/music-folder-store.js">
 /**
  * @role persistence-helper
@@ -629,121 +393,6 @@ export function showPrompt(message, { title = "", defaultValue = "", confirmLabe
 }
 </file>
 
-<file path="src/features/plans/plans-ui.js">
-/**
- * @role renderer
- * @owns current-plan summary messaging and current-plan item list rendering for the planner view
- * @not-owns plan persistence, plan mutation rules, or activity launch behavior
- * @notes Keep this file presentation-only.
- */
-
-import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
-
-export function renderPlan({
-  elements,
-  currentProfileId,
-  plan,
-  planItems,
-  activitiesById,
-  tracks,
-  sectionsById,
-  onUseActivity,
-  onRemoveItem,
-}) {
-  elements.planName.textContent = plan?.name ?? "Current Plan";
-  elements.planList.innerHTML = "";
-
-  if (!currentProfileId) {
-    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
-
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Select a profile to create and manage the current practice plan.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  elements.planSummary.textContent = planItems.length
-    ? `${planItems.length} activity item${planItems.length === 1 ? "" : "s"} in the current plan.`
-    : "No activities in the current plan yet.";
-
-  if (!planItems.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent =
-      "Use Add to Plan from the activity library on this page to build the current practice plan.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  planItems.forEach((planItem, index) => {
-    const activity = activitiesById.get(planItem.activityId) ?? null;
-    const useState = activity
-      ? getActivityUseState(activity, { tracks, sectionsById })
-      : { interactive: false, label: "Unavailable" };
-
-    const row = document.createElement("div");
-    row.className = "section-row";
-
-    if (!useState.interactive) {
-      row.classList.add("is-static");
-    }
-
-    const main = document.createElement("div");
-    main.className = "section-main";
-
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
-
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent = activity
-      ? describeActivity(activity, { tracks, sectionsById })
-      : "This plan item references an activity that no longer exists.";
-
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
-
-    const useButton = document.createElement("button");
-    useButton.type = "button";
-    useButton.textContent = useState.label;
-    useButton.disabled = !useState.interactive || !activity;
-    useButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-
-      if (activity && useState.interactive) {
-        onUseActivity(activity.id);
-      }
-    });
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "danger";
-    removeButton.textContent = "Remove";
-    removeButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onRemoveItem(planItem.id);
-    });
-
-    actions.appendChild(useButton);
-    actions.appendChild(removeButton);
-
-    row.appendChild(main);
-    row.appendChild(actions);
-
-    if (activity && useState.interactive) {
-      row.addEventListener("click", () => onUseActivity(activity.id));
-    }
-
-    elements.planList.appendChild(row);
-  });
-}
-</file>
-
 <file path="src/features/profiles/profiles-ui.js">
 /**
  * @role renderer
@@ -1034,120 +683,6 @@ export function updateActivity(activity) {
 
 export function deleteActivity(activityId) {
   return runRequest(STORES.ACTIVITIES, "readwrite", (store) => store.delete(activityId));
-}
-</file>
-
-<file path="src/routes/planner/planner-route.js">
-/**
- * @role route-renderer
- * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
- * @not-owns shell chrome, activity business rules, or plan persistence rules
- * @notes This route hosts the current plan surface and the reusable activity library; contextual track/section creation lives in the workspace.
- */
-
-export function renderPlannerRoute({ mountEl, services }) {
-  const routeRoot = document.createElement("div");
-  routeRoot.className = "route-page planner-page";
-  routeRoot.innerHTML = `
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Planner</h2>
-          <p class="small">
-            Review the current practice plan, browse reusable activities, and add custom references.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <div class="planner-grid">
-      <section class="card">
-        <div class="section-header">
-          <div>
-            <h2>Current Plan</h2>
-            <p class="small">
-              Organize the order of practice using reusable activities from this profile.
-            </p>
-          </div>
-        </div>
-
-        <div class="planner-summary-bar">
-          <div>
-            <div class="small plan-name" data-planner-el="planName">Current Plan</div>
-            <div class="small" data-planner-el="planSummary"></div>
-          </div>
-        </div>
-
-        <div class="section-list" data-planner-el="planList"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header">
-          <div>
-            <h2>Activity Library</h2>
-            <p class="small">
-              Reusable activities stay here. Create song and section activities from the Workspace.
-            </p>
-          </div>
-
-          <div class="section-actions">
-            <button type="button" class="secondary" data-planner-el="addCustomActivity">
-              Add Custom Activity
-            </button>
-          </div>
-        </div>
-
-        <div class="planner-summary-bar">
-          <div class="small" data-planner-el="activitySummary"></div>
-        </div>
-
-        <div class="section-list" data-planner-el="activityList"></div>
-      </section>
-    </div>
-  `;
-
-  mountEl.replaceChildren(routeRoot);
-
-  const elements = getPlannerElements(routeRoot);
-
-  const handleAddCustomActivity = () => {
-    void services.activitiesController.createCustomActivity();
-  };
-
-  elements.addCustomActivity.addEventListener("click", handleAddCustomActivity);
-
-  services.plansController.attachPlanner(elements);
-  services.activitiesController.attachPlanner(elements);
-
-  return {
-    cleanup() {
-      elements.addCustomActivity.removeEventListener("click", handleAddCustomActivity);
-
-      services.activitiesController.detachPlanner();
-      services.plansController.detachPlanner();
-    },
-  };
-}
-
-export function getPlannerElements(routeRoot) {
-  return {
-    planName: getRequiredElement(routeRoot, "planName"),
-    planSummary: getRequiredElement(routeRoot, "planSummary"),
-    planList: getRequiredElement(routeRoot, "planList"),
-    activitySummary: getRequiredElement(routeRoot, "activitySummary"),
-    activityList: getRequiredElement(routeRoot, "activityList"),
-    addCustomActivity: getRequiredElement(routeRoot, "addCustomActivity"),
-  };
-}
-
-function getRequiredElement(routeRoot, name) {
-  const element = routeRoot.querySelector(`[data-planner-el="${name}"]`);
-
-  if (!element) {
-    throw new Error(`Missing planner element: ${name}`);
-  }
-
-  return element;
 }
 </file>
 
@@ -1521,6 +1056,561 @@ dist/
 .DS_Store
 </file>
 
+<file path="src/features/plans/plans-controller.js">
+/**
+ * @role controller
+ * @owns current-plan bootstrap, current-plan selection persistence, save/load plan orchestration, add/remove plan item orchestration, and planner current-plan rendering
+ * @not-owns activity CRUD, activity launch behavior internals, or low-level IndexedDB helpers
+ * @notes The current UX now supports loading saved named plans while still maintaining one persisted current/default plan per profile.
+ */
+
+import { state } from "../../app/state.js";
+import { DEFAULT_PLAN_NAME } from "../../shared/constants.js";
+import { showPrompt } from "../../shared/dialog.js";
+import {
+  addPlan,
+  addPlanItem,
+  deletePlanItem,
+  getPlanItemsByPlanId,
+  getPlansByProfile,
+  updatePlan,
+} from "../../persistence/plan-store.js";
+import { renderPlan } from "./plans-ui.js";
+
+export function createPlansController({ activateActivity, handleError } = {}) {
+  let planner = null;
+
+  function attachPlanner(nextPlanner) {
+    planner = nextPlanner;
+    renderPlanList();
+  }
+
+  function detachPlanner() {
+    planner = null;
+  }
+
+  async function refreshPlans() {
+    try {
+      if (!state.currentProfileId) {
+        state.plans = [];
+        state.currentPlanId = null;
+        state.planItems = [];
+        renderPlanList();
+        return null;
+      }
+
+      let plans = await getPlansByProfile(state.currentProfileId);
+
+      if (!plans.length) {
+        const now = Date.now();
+
+        await addPlan({
+          profileId: state.currentProfileId,
+          name: DEFAULT_PLAN_NAME,
+          isDefault: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        plans = await getPlansByProfile(state.currentProfileId);
+      }
+
+      state.plans = [...plans].sort(sortPlans);
+
+      if (!state.plans.some((plan) => plan.id === state.currentPlanId)) {
+        state.currentPlanId =
+          state.plans.find((plan) => plan.isDefault)?.id ?? state.plans[0]?.id ?? null;
+      }
+
+      await refreshPlanItems();
+      return getCurrentPlan();
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function refreshPlanItems() {
+    if (!state.currentPlanId) {
+      state.planItems = [];
+      renderPlanList();
+      return [];
+    }
+
+    const planItems = await getPlanItemsByPlanId(state.currentPlanId);
+    state.planItems = [...planItems].sort(sortPlanItems);
+    renderPlanList();
+    return state.planItems;
+  }
+
+  function renderPlanList() {
+    if (!planner) {
+      return;
+    }
+
+    const activitiesById = new Map(state.activities.map((activity) => [activity.id, activity]));
+    const sectionsById = new Map(state.allSections.map((section) => [section.id, section]));
+
+    renderPlan({
+      elements: planner,
+      currentProfileId: state.currentProfileId,
+      plans: state.plans,
+      currentPlanId: state.currentPlanId,
+      plan: getCurrentPlan(),
+      planItems: state.planItems,
+      activitiesById,
+      tracks: state.tracks,
+      sectionsById,
+      onUseActivity: (activityId) => {
+        void activateActivity?.(activityId);
+      },
+      onRemoveItem: (planItemId) => {
+        void removePlanItem(planItemId);
+      },
+    });
+  }
+
+  async function addActivityToCurrentPlan(activityId) {
+    try {
+      const activity = state.activities.find((item) => item.id === activityId);
+
+      if (!activity) {
+        throw new Error("That activity is no longer available.");
+      }
+
+      const currentPlan = await ensureCurrentPlan();
+      const nextPosition = getNextPlanItemPosition(state.planItems);
+      const now = Date.now();
+
+      await addPlanItem({
+        planId: currentPlan.id,
+        activityId,
+        position: nextPosition,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await touchCurrentPlan(currentPlan);
+      await refreshPlanItems();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function removePlanItem(planItemId) {
+    try {
+      const planItem = state.planItems.find((item) => item.id === planItemId);
+
+      if (!planItem) {
+        return;
+      }
+
+      const currentPlan = getCurrentPlan();
+
+      await deletePlanItem(planItemId);
+
+      if (currentPlan) {
+        await touchCurrentPlan(currentPlan);
+      }
+
+      await refreshPlanItems();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function setCurrentPlanId(planId) {
+    try {
+      if (!state.currentProfileId) {
+        throw new Error("Select a profile first.");
+      }
+
+      const nextPlan = state.plans.find((plan) => plan.id === planId);
+
+      if (!nextPlan) {
+        throw new Error("That plan is no longer available.");
+      }
+
+      state.currentPlanId = nextPlan.id;
+      await persistDefaultPlanSelection(nextPlan.id);
+      await refreshPlanItems();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function saveCurrentPlanAsNew() {
+    try {
+      const currentPlan = await ensureCurrentPlan();
+      const suggestedName = getSuggestedPlanName(currentPlan.name);
+
+      const rawName = await showPrompt("Plan name:", {
+        title: "Save as New Plan",
+        defaultValue: suggestedName,
+        placeholder: "e.g. Scales Warmup, Lesson Week 4",
+      });
+      const trimmed = rawName?.trim();
+
+      if (!trimmed) {
+        return null;
+      }
+
+      const nextName = makeUniquePlanName(trimmed, state.plans);
+      const now = Date.now();
+
+      await clearDefaultPlanFlags();
+
+      const newPlanId = await addPlan({
+        profileId: state.currentProfileId,
+        name: nextName,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const sourceItems = [...state.planItems].sort(sortPlanItems);
+
+      await Promise.all(
+        sourceItems.map((item, index) =>
+          addPlanItem({
+            planId: newPlanId,
+            activityId: item.activityId,
+            position: index,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ),
+      );
+
+      state.currentPlanId = newPlanId;
+      await refreshPlans();
+      return newPlanId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
+  async function ensureCurrentPlan() {
+    if (!state.currentProfileId) {
+      throw new Error("Select a profile first.");
+    }
+
+    let currentPlan = getCurrentPlan();
+
+    if (currentPlan) {
+      return currentPlan;
+    }
+
+    await refreshPlans();
+    currentPlan = getCurrentPlan();
+
+    if (!currentPlan) {
+      throw new Error("Unable to load the current plan.");
+    }
+
+    return currentPlan;
+  }
+
+  async function touchCurrentPlan(plan) {
+    await updatePlan({
+      ...plan,
+      updatedAt: Date.now(),
+    });
+
+    state.plans = state.plans
+      .map((item) => (item.id === plan.id ? { ...item, updatedAt: Date.now() } : item))
+      .sort(sortPlans);
+  }
+
+  async function persistDefaultPlanSelection(planId) {
+    const now = Date.now();
+    const updates = [];
+    const nextPlans = state.plans.map((plan) => {
+      const shouldBeDefault = plan.id === planId;
+
+      if (Boolean(plan.isDefault) === shouldBeDefault) {
+        return plan;
+      }
+
+      const updatedPlan = {
+        ...plan,
+        isDefault: shouldBeDefault,
+        updatedAt: shouldBeDefault ? now : plan.updatedAt,
+      };
+
+      updates.push(updatePlan(updatedPlan));
+      return updatedPlan;
+    });
+
+    if (updates.length) {
+      await Promise.all(updates);
+      state.plans = nextPlans.sort(sortPlans);
+    }
+  }
+
+  async function clearDefaultPlanFlags() {
+    const defaultPlans = state.plans.filter((plan) => plan.isDefault);
+
+    if (!defaultPlans.length) {
+      return;
+    }
+
+    await Promise.all(
+      defaultPlans.map((plan) =>
+        updatePlan({
+          ...plan,
+          isDefault: false,
+        }),
+      ),
+    );
+
+    state.plans = state.plans
+      .map((plan) => ({
+        ...plan,
+        isDefault: false,
+      }))
+      .sort(sortPlans);
+  }
+
+  function getCurrentPlan() {
+    return state.plans.find((plan) => plan.id === state.currentPlanId) ?? null;
+  }
+
+  return {
+    attachPlanner,
+    detachPlanner,
+    refreshPlans,
+    refreshPlanItems,
+    renderPlanList,
+    addActivityToCurrentPlan,
+    removePlanItem,
+    setCurrentPlanId,
+    saveCurrentPlanAsNew,
+  };
+}
+
+function sortPlans(a, b) {
+  return (
+    Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)) ||
+    (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    a.id - b.id
+  );
+}
+
+function sortPlanItems(a, b) {
+  return (
+    (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER) ||
+    (a.createdAt ?? 0) - (b.createdAt ?? 0) ||
+    a.id - b.id
+  );
+}
+
+function getNextPlanItemPosition(planItems) {
+  if (!planItems.length) {
+    return 0;
+  }
+
+  return Math.max(...planItems.map((item) => item.position ?? -1)) + 1;
+}
+
+function getSuggestedPlanName(currentName) {
+  if (!currentName || currentName === DEFAULT_PLAN_NAME) {
+    return "New Plan";
+  }
+
+  return `${currentName} Copy`;
+}
+
+function makeUniquePlanName(name, plans) {
+  const normalized = name.trim().toLocaleLowerCase();
+  const existingNames = new Set(plans.map((plan) => plan.name.trim().toLocaleLowerCase()));
+
+  if (!existingNames.has(normalized)) {
+    return name.trim();
+  }
+
+  let suffix = 2;
+  let candidate = `${name.trim()} ${suffix}`;
+
+  while (existingNames.has(candidate.toLocaleLowerCase())) {
+    suffix += 1;
+    candidate = `${name.trim()} ${suffix}`;
+  }
+
+  return candidate;
+}
+</file>
+
+<file path="src/features/plans/plans-ui.js">
+/**
+ * @role renderer
+ * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
+ * @not-owns plan persistence, plan mutation rules, or activity launch behavior
+ * @notes Keep this file presentation-only.
+ */
+
+import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
+
+export function renderPlan({
+  elements,
+  currentProfileId,
+  plans,
+  currentPlanId,
+  plan,
+  planItems,
+  activitiesById,
+  tracks,
+  sectionsById,
+  onUseActivity,
+  onRemoveItem,
+}) {
+  renderPlanPicker(elements, {
+    currentProfileId,
+    plans,
+    currentPlanId,
+  });
+
+  elements.planName.textContent = plan?.name ?? "Current Plan";
+  elements.planList.innerHTML = "";
+
+  if (!currentProfileId) {
+    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a profile to create, load, and manage practice plans.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
+
+  if (!planItems.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent =
+      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  planItems.forEach((planItem, index) => {
+    const activity = activitiesById.get(planItem.activityId) ?? null;
+    const useState = activity
+      ? getActivityUseState(activity, { tracks, sectionsById })
+      : { interactive: false, label: "Unavailable" };
+
+    const row = document.createElement("div");
+    row.className = "section-row";
+
+    if (!useState.interactive) {
+      row.classList.add("is-static");
+    }
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent = activity
+      ? describeActivity(activity, { tracks, sectionsById })
+      : "This plan item references an activity that no longer exists.";
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.textContent = useState.label;
+    useButton.disabled = !useState.interactive || !activity;
+    useButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      if (activity && useState.interactive) {
+        onUseActivity(activity.id);
+      }
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "danger";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onRemoveItem(planItem.id);
+    });
+
+    actions.appendChild(useButton);
+    actions.appendChild(removeButton);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+
+    if (activity && useState.interactive) {
+      row.addEventListener("click", () => onUseActivity(activity.id));
+    }
+
+    elements.planList.appendChild(row);
+  });
+}
+
+function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
+  elements.planSelect.innerHTML = "";
+
+  if (!currentProfileId) {
+    const option = document.createElement("option");
+    option.textContent = "Select a profile";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  if (!plans.length) {
+    const option = document.createElement("option");
+    option.textContent = "No plans";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  plans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = String(plan.id);
+    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
+
+    if (plan.id === currentPlanId) {
+      option.selected = true;
+    }
+
+    elements.planSelect.appendChild(option);
+  });
+
+  elements.planSelect.disabled = false;
+}
+
+function createPlanSummary(planItemCount, planCount) {
+  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
+  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
+  return `${itemText} • ${planText}.`;
+}
+</file>
+
 <file path="src/persistence/db.js">
 /**
  * @role persistence-layer
@@ -1716,250 +1806,146 @@ export function setSetting(key, value) {
 }
 </file>
 
-<file path="src/routes/workspace/workspace-route.js">
+<file path="src/routes/planner/planner-route.js">
 /**
  * @role route-renderer
- * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
- * @not-owns shell chrome, track/section business logic, or persistent global transport
- * @notes This route renders workspace-owned UI and contextual activity creation shortcuts without showing the full activity library.
+ * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
+ * @not-owns shell chrome, activity business rules, or plan persistence rules
+ * @notes This route hosts saved-plan loading, current-plan composition, and the activity library.
  */
 
-import { state } from "../../app/state.js";
-import { createWaveform } from "../../shared/waveform.js";
-
-export async function renderWorkspaceRoute({ mountEl, services }) {
+export function renderPlannerRoute({ mountEl, services }) {
   const routeRoot = document.createElement("div");
-  routeRoot.className = "route-page workspace-page";
+  routeRoot.className = "route-page planner-page";
   routeRoot.innerHTML = `
     <section class="card">
       <div class="section-header">
         <div>
-          <h2>Workspace</h2>
+          <h2>Planner</h2>
           <p class="small">
-            Load a track, focus a saved section, and practice from the shared transport.
+            Load saved plans, organize the current plan, and browse reusable activities.
           </p>
         </div>
       </div>
     </section>
 
-    <div class="workspace-grid">
-      <section class="card workspace-main-card">
-        <div class="panel-block">
-          <div class="section-header section-header-compact">
-            <div>
-              <h2>Track Setup</h2>
-              <p class="small">Choose a folder, load tracks, and set playback speed.</p>
-            </div>
+    <div class="planner-grid">
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2>Current Plan</h2>
+            <p class="small">
+              Choose a saved plan to load it as the current working plan for this profile.
+            </p>
           </div>
+        </div>
 
-          <div class="row">
-            <button type="button" data-workspace-el="pickFolder">Pick Music Folder</button>
-            <div class="small" data-workspace-el="trackCount">No folder selected.</div>
-          </div>
-
-          <div class="row">
-            <label for="workspaceTrackSelect">Track</label>
+        <div class="planner-summary-bar planner-plan-toolbar">
+          <div class="planner-field-group">
+            <label for="plannerPlanSelect">Loaded Plan</label>
             <select
-              id="workspaceTrackSelect"
-              data-workspace-el="trackSelect"
-              aria-label="Track"
+              id="plannerPlanSelect"
+              class="planner-plan-select"
+              data-planner-el="planSelect"
+              aria-label="Loaded Plan"
             ></select>
           </div>
 
-          <div class="row">
-            <label for="workspaceSpeed">Speed</label>
-            <input
-              id="workspaceSpeed"
-              data-workspace-el="speed"
-              type="range"
-              min="0.5"
-              max="1.5"
-              step="0.05"
-              value="${String(state.playbackRate)}"
-            />
-            <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
-
-            <label class="checkbox-label" for="workspaceLoopToggle">
-              <input
-                id="workspaceLoopToggle"
-                data-workspace-el="loopToggle"
-                type="checkbox"
-                ${state.loopEnabled ? "checked" : ""}
-              />
-              Loop focused section
-            </label>
+          <div class="section-actions">
+            <button type="button" class="secondary" data-planner-el="savePlanAs">
+              Save as New Plan
+            </button>
           </div>
         </div>
 
-        <div class="panel-block">
-          <div class="section-header section-header-compact">
-            <div>
-              <h2>Selection & Practice</h2>
-              <p class="small">Adjust the current range, review mastery, and save sections.</p>
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
-            <div class="mastery-pill">
-              Mastery <span data-workspace-el="masteryDisplay">—</span>
-            </div>
-            <button type="button" data-workspace-el="saveSection">Save Section</button>
+        <div class="planner-summary-bar">
+          <div>
+            <div class="small plan-name" data-planner-el="planName">Current Plan</div>
+            <div class="small" data-planner-el="planSummary"></div>
           </div>
         </div>
 
-        <div class="panel-block">
-          <div class="section-header section-header-compact">
-            <div>
-              <h2>Waveform</h2>
-              <p class="small">Drag to define the active A/B range on the current track.</p>
-            </div>
-          </div>
-
-          <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
-        </div>
+        <div class="section-list" data-planner-el="planList"></div>
       </section>
 
-      <div class="sidebar-stack">
-        <section class="card">
-          <div class="section-header">
-            <div>
-              <h2>Activity Shortcuts</h2>
-              <p class="small">
-                Create reusable activities from the current workspace context without opening the library.
-              </p>
-            </div>
-          </div>
-
-          <div class="planner-summary-bar">
-            <div class="small" data-workspace-el="activityContextSummary"></div>
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2>Activity Library</h2>
+            <p class="small">
+              Reusable activities live here. Create track and section activities from the Workspace.
+            </p>
           </div>
 
           <div class="section-actions">
-            <button type="button" class="secondary" data-workspace-el="createTrackActivity">
-              Create from Song
-            </button>
-            <button type="button" class="secondary" data-workspace-el="createSectionActivity">
-              Create from Section
+            <button type="button" class="secondary" data-planner-el="addCustomActivity">
+              Add Custom Activity
             </button>
           </div>
-        </section>
+        </div>
 
-        <section class="card">
-          <div class="section-header">
-            <div>
-              <h2>Saved Sections</h2>
-              <p class="small" data-workspace-el="sectionSummary"></p>
-            </div>
-          </div>
+        <div class="planner-summary-bar">
+          <div class="small" data-planner-el="activitySummary"></div>
+        </div>
 
-          <div class="section-list" data-workspace-el="sectionList"></div>
-        </section>
-      </div>
+        <div class="section-list" data-planner-el="activityList"></div>
+      </section>
     </div>
   `;
 
   mountEl.replaceChildren(routeRoot);
 
-  const elements = getWorkspaceElements(routeRoot);
-  const waveform = createWaveform({
-    mountEl: elements.waveformMount,
-    onSelectionChange: (selection) => {
-      services.selectionController.handleWaveformSelectionChange(selection);
-    },
-  });
+  const elements = getPlannerElements(routeRoot);
 
-  const workspace = {
-    ...elements,
-    waveform,
+  const handlePlanChange = (event) => {
+    void services.plansController.setCurrentPlanId(Number(event.target.value));
   };
 
-  const handlePickFolder = () => {
-    void services.tracksController.pickMusicFolder();
+  const handleSavePlanAs = () => {
+    void services.plansController.saveCurrentPlanAsNew();
   };
 
-  const handleTrackChange = (event) => {
-    const nextIndex = Number(event.target.value);
-    void services.tracksController.selectTrackByIndex(nextIndex);
+  const handleAddCustomActivity = () => {
+    void services.activitiesController.createCustomActivity();
   };
 
-  const handleSaveSection = () => {
-    void services.sectionsController.saveSelectionAsSection();
-  };
+  elements.planSelect.addEventListener("change", handlePlanChange);
+  elements.savePlanAs.addEventListener("click", handleSavePlanAs);
+  elements.addCustomActivity.addEventListener("click", handleAddCustomActivity);
 
-  const handleSpeedChange = (event) => {
-    services.tracksController.setSpeed(Number(event.target.value));
-  };
-
-  const handleLoopChange = (event) => {
-    state.loopEnabled = Boolean(event.target.checked);
-  };
-
-  const handleCreateTrackActivity = () => {
-    void services.activitiesController.createTrackActivityFromCurrentTrack();
-  };
-
-  const handleCreateSectionActivity = () => {
-    void services.activitiesController.createSectionActivityFromFocusedSection();
-  };
-
-  elements.pickFolder.addEventListener("click", handlePickFolder);
-  elements.trackSelect.addEventListener("change", handleTrackChange);
-  elements.saveSection.addEventListener("click", handleSaveSection);
-  elements.speed.addEventListener("input", handleSpeedChange);
-  elements.loopToggle.addEventListener("change", handleLoopChange);
-  elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
-  elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
-
-  services.selectionController.attachWorkspace(workspace);
-  services.sectionsController.attachWorkspace(workspace);
-  await services.tracksController.attachWorkspace(workspace);
-  services.activitiesController.attachWorkspace(workspace);
+  services.plansController.attachPlanner(elements);
+  services.activitiesController.attachPlanner(elements);
 
   return {
     cleanup() {
-      elements.pickFolder.removeEventListener("click", handlePickFolder);
-      elements.trackSelect.removeEventListener("change", handleTrackChange);
-      elements.saveSection.removeEventListener("click", handleSaveSection);
-      elements.speed.removeEventListener("input", handleSpeedChange);
-      elements.loopToggle.removeEventListener("change", handleLoopChange);
-      elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
-      elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
+      elements.planSelect.removeEventListener("change", handlePlanChange);
+      elements.savePlanAs.removeEventListener("click", handleSavePlanAs);
+      elements.addCustomActivity.removeEventListener("click", handleAddCustomActivity);
 
-      services.activitiesController.detachWorkspace();
-      services.tracksController.detachWorkspace();
-      services.sectionsController.detachWorkspace();
-      services.selectionController.detachWorkspace();
-      waveform.destroy();
+      services.activitiesController.detachPlanner();
+      services.plansController.detachPlanner();
     },
   };
 }
 
-export function getWorkspaceElements(routeRoot) {
+export function getPlannerElements(routeRoot) {
   return {
-    pickFolder: getRequiredElement(routeRoot, "pickFolder"),
-    trackSelect: getRequiredElement(routeRoot, "trackSelect"),
-    trackCount: getRequiredElement(routeRoot, "trackCount"),
-    speed: getRequiredElement(routeRoot, "speed"),
-    speedVal: getRequiredElement(routeRoot, "speedVal"),
-    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
-    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
-    masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
-    saveSection: getRequiredElement(routeRoot, "saveSection"),
-    activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
-    createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
-    createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
-    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
-    sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
-    sectionList: getRequiredElement(routeRoot, "sectionList"),
+    planSelect: getRequiredElement(routeRoot, "planSelect"),
+    savePlanAs: getRequiredElement(routeRoot, "savePlanAs"),
+    planName: getRequiredElement(routeRoot, "planName"),
+    planSummary: getRequiredElement(routeRoot, "planSummary"),
+    planList: getRequiredElement(routeRoot, "planList"),
+    activitySummary: getRequiredElement(routeRoot, "activitySummary"),
+    activityList: getRequiredElement(routeRoot, "activityList"),
+    addCustomActivity: getRequiredElement(routeRoot, "addCustomActivity"),
   };
 }
 
 function getRequiredElement(routeRoot, name) {
-  const element = routeRoot.querySelector(`[data-workspace-el="${name}"]`);
+  const element = routeRoot.querySelector(`[data-planner-el="${name}"]`);
 
   if (!element) {
-    throw new Error(`Missing workspace element: ${name}`);
+    throw new Error(`Missing planner element: ${name}`);
   }
 
   return element;
@@ -2732,6 +2718,256 @@ export function createTracksController({
     setSpeed,
     syncWaveformPlaybackPosition,
   };
+}
+</file>
+
+<file path="src/routes/workspace/workspace-route.js">
+/**
+ * @role route-renderer
+ * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
+ * @not-owns shell chrome, track/section business logic, or persistent global transport
+ * @notes This route renders workspace-owned UI and contextual activity creation shortcuts without showing the full activity library.
+ */
+
+import { state } from "../../app/state.js";
+import { createWaveform } from "../../shared/waveform.js";
+
+export async function renderWorkspaceRoute({ mountEl, services }) {
+  const routeRoot = document.createElement("div");
+  routeRoot.className = "route-page workspace-page";
+  routeRoot.innerHTML = `
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Workspace</h2>
+          <p class="small">
+            Load a track, focus a saved section, and practice from the shared transport.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="card workspace-main-card">
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Track Setup</h2>
+              <p class="small">Choose a folder, load tracks, and set playback speed.</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="button" data-workspace-el="pickFolder">Pick Music Folder</button>
+            <div class="small" data-workspace-el="trackCount">No folder selected.</div>
+          </div>
+
+          <div class="row">
+            <label for="workspaceTrackSelect">Track</label>
+            <select
+              id="workspaceTrackSelect"
+              data-workspace-el="trackSelect"
+              aria-label="Track"
+            ></select>
+          </div>
+
+          <div class="row">
+            <label for="workspaceSpeed">Speed</label>
+            <input
+              id="workspaceSpeed"
+              data-workspace-el="speed"
+              type="range"
+              min="0.5"
+              max="1.5"
+              step="0.05"
+              value="${String(state.playbackRate)}"
+            />
+            <span class="mastery-pill" data-workspace-el="speedVal">${state.playbackRate.toFixed(2)}×</span>
+
+            <label class="checkbox-label" for="workspaceLoopToggle">
+              <input
+                id="workspaceLoopToggle"
+                data-workspace-el="loopToggle"
+                type="checkbox"
+                ${state.loopEnabled ? "checked" : ""}
+              />
+              Loop focused section
+            </label>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Selection & Practice</h2>
+              <p class="small">Adjust the current range, review mastery, and save sections.</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="mastery-pill" data-workspace-el="abDisplay">A — • B —</div>
+            <div class="mastery-pill">
+              Mastery <span data-workspace-el="masteryDisplay">—</span>
+            </div>
+            <button type="button" data-workspace-el="saveSection">Save Section</button>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="section-header section-header-compact">
+            <div>
+              <h2>Waveform</h2>
+              <p class="small">Drag to define the active A/B range on the current track.</p>
+            </div>
+          </div>
+
+          <div class="waveform-wrap" data-workspace-el="waveformMount"></div>
+        </div>
+      </section>
+
+      <div class="sidebar-stack">
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>Activity Shortcuts</h2>
+              <p class="small">
+                Create reusable activities from the current workspace context without opening the library.
+              </p>
+            </div>
+          </div>
+
+          <div class="planner-summary-bar">
+            <div class="small" data-workspace-el="activityContextSummary"></div>
+          </div>
+
+          <div class="section-actions">
+            <button type="button" class="secondary" data-workspace-el="createTrackActivity">
+              Create from Track
+            </button>
+            <button type="button" class="secondary" data-workspace-el="createSectionActivity">
+              Create from Section
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <div>
+              <h2>Saved Sections</h2>
+              <p class="small" data-workspace-el="sectionSummary"></p>
+            </div>
+          </div>
+
+          <div class="section-list" data-workspace-el="sectionList"></div>
+        </section>
+      </div>
+    </div>
+  `;
+
+  mountEl.replaceChildren(routeRoot);
+
+  const elements = getWorkspaceElements(routeRoot);
+  const waveform = createWaveform({
+    mountEl: elements.waveformMount,
+    onSelectionChange: (selection) => {
+      services.selectionController.handleWaveformSelectionChange(selection);
+    },
+  });
+
+  const workspace = {
+    ...elements,
+    waveform,
+  };
+
+  const handlePickFolder = () => {
+    void services.tracksController.pickMusicFolder();
+  };
+
+  const handleTrackChange = (event) => {
+    const nextIndex = Number(event.target.value);
+    void services.tracksController.selectTrackByIndex(nextIndex);
+  };
+
+  const handleSaveSection = () => {
+    void services.sectionsController.saveSelectionAsSection();
+  };
+
+  const handleSpeedChange = (event) => {
+    services.tracksController.setSpeed(Number(event.target.value));
+  };
+
+  const handleLoopChange = (event) => {
+    state.loopEnabled = Boolean(event.target.checked);
+  };
+
+  const handleCreateTrackActivity = () => {
+    void services.activitiesController.createTrackActivityFromCurrentTrack();
+  };
+
+  const handleCreateSectionActivity = () => {
+    void services.activitiesController.createSectionActivityFromFocusedSection();
+  };
+
+  elements.pickFolder.addEventListener("click", handlePickFolder);
+  elements.trackSelect.addEventListener("change", handleTrackChange);
+  elements.saveSection.addEventListener("click", handleSaveSection);
+  elements.speed.addEventListener("input", handleSpeedChange);
+  elements.loopToggle.addEventListener("change", handleLoopChange);
+  elements.createTrackActivity.addEventListener("click", handleCreateTrackActivity);
+  elements.createSectionActivity.addEventListener("click", handleCreateSectionActivity);
+
+  services.selectionController.attachWorkspace(workspace);
+  services.sectionsController.attachWorkspace(workspace);
+  await services.tracksController.attachWorkspace(workspace);
+  services.activitiesController.attachWorkspace(workspace);
+
+  return {
+    cleanup() {
+      elements.pickFolder.removeEventListener("click", handlePickFolder);
+      elements.trackSelect.removeEventListener("change", handleTrackChange);
+      elements.saveSection.removeEventListener("click", handleSaveSection);
+      elements.speed.removeEventListener("input", handleSpeedChange);
+      elements.loopToggle.removeEventListener("change", handleLoopChange);
+      elements.createTrackActivity.removeEventListener("click", handleCreateTrackActivity);
+      elements.createSectionActivity.removeEventListener("click", handleCreateSectionActivity);
+
+      services.activitiesController.detachWorkspace();
+      services.tracksController.detachWorkspace();
+      services.sectionsController.detachWorkspace();
+      services.selectionController.detachWorkspace();
+      waveform.destroy();
+    },
+  };
+}
+
+export function getWorkspaceElements(routeRoot) {
+  return {
+    pickFolder: getRequiredElement(routeRoot, "pickFolder"),
+    trackSelect: getRequiredElement(routeRoot, "trackSelect"),
+    trackCount: getRequiredElement(routeRoot, "trackCount"),
+    speed: getRequiredElement(routeRoot, "speed"),
+    speedVal: getRequiredElement(routeRoot, "speedVal"),
+    loopToggle: getRequiredElement(routeRoot, "loopToggle"),
+    abDisplay: getRequiredElement(routeRoot, "abDisplay"),
+    masteryDisplay: getRequiredElement(routeRoot, "masteryDisplay"),
+    saveSection: getRequiredElement(routeRoot, "saveSection"),
+    activityContextSummary: getRequiredElement(routeRoot, "activityContextSummary"),
+    createTrackActivity: getRequiredElement(routeRoot, "createTrackActivity"),
+    createSectionActivity: getRequiredElement(routeRoot, "createSectionActivity"),
+    waveformMount: getRequiredElement(routeRoot, "waveformMount"),
+    sectionSummary: getRequiredElement(routeRoot, "sectionSummary"),
+    sectionList: getRequiredElement(routeRoot, "sectionList"),
+  };
+}
+
+function getRequiredElement(routeRoot, name) {
+  const element = routeRoot.querySelector(`[data-workspace-el="${name}"]`);
+
+  if (!element) {
+    throw new Error(`Missing workspace element: ${name}`);
+  }
+
+  return element;
 }
 </file>
 
@@ -4563,7 +4799,7 @@ export function createActivitiesController({
       }
 
       const name = await showPrompt("Activity name:", {
-        title: "Create Song Activity",
+        title: "Create Track Activity",
         defaultValue: state.currentTrack.name,
       });
       const trimmed = name?.trim();
@@ -4767,7 +5003,7 @@ function getWorkspaceActivitySummary({ hasProfile, hasTrack, currentSection }) {
   }
 
   if (!hasTrack) {
-    return "Pick a song to create a song activity.";
+    return "Pick a track to create a track activity.";
   }
 
   if (currentSection) {
@@ -4961,6 +5197,22 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
 }
 
 .section-header {
@@ -5255,6 +5507,10 @@ audio {
   .planner-summary-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
   }
 }
 </file>
