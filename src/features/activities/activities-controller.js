@@ -13,7 +13,7 @@ import {
   updateActivity,
 } from "../../persistence/activity-store.js";
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-import { showConfirm, showPrompt } from "../../shared/dialog.js";
+import { showConfirm, showFormPrompt, showPrompt } from "../../shared/dialog.js";
 import { createSectionLabel } from "../../shared/utils.js";
 import { renderActivities } from "./activities-ui.js";
 
@@ -226,27 +226,35 @@ export function createActivitiesController({
     try {
       ensureActiveProfile();
 
-      const name = await showPrompt("Activity name:", { title: "Add Custom Activity" });
-      const trimmed = name?.trim();
-
-      if (!trimmed) {
-        return null;
-      }
-
-      const customReference = await showPrompt("Custom reference:", {
+      const values = await showFormPrompt("Enter the custom activity details.", {
         title: "Add Custom Activity",
-        placeholder: "e.g. Scales in D major, Bow exercises",
+        confirmLabel: "Add Activity",
+        fields: [
+          {
+            name: "name",
+            label: "Activity name",
+            placeholder: "e.g. Scales warmup",
+            required: true,
+          },
+          {
+            name: "customReference",
+            label: "Custom reference",
+            placeholder: "e.g. Scales in D major, Bow exercises",
+            multiline: true,
+            rows: 3,
+            required: true,
+          },
+        ],
       });
-      const trimmedRef = customReference?.trim();
 
-      if (!trimmedRef) {
+      if (!values) {
         return null;
       }
 
       return createActivity({
-        name: trimmed,
+        name: values.name,
         targetType: ACTIVITY_TARGET_TYPES.CUSTOM,
-        customReference: trimmedRef,
+        customReference: values.customReference,
       });
     } catch (error) {
       handleError?.(error);

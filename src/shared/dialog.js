@@ -1,6 +1,6 @@
 /**
  * @role utility-module
- * @owns promise-based dialog helpers (alert, confirm, prompt) using native <dialog>
+ * @owns promise-based dialog helpers (alert, confirm, prompt, form prompt) using native <dialog>
  * @not-owns DOM structure of the dialog element (defined in index.html), styling (defined in styles.css), or business logic
  * @notes Drop-in replacements for window.alert, window.confirm, and window.prompt that avoid blocking the thread.
  */
@@ -9,6 +9,7 @@ let dialogEl;
 let titleEl;
 let messageEl;
 let inputEl;
+let fieldsEl;
 let confirmBtn;
 let cancelBtn;
 
@@ -21,21 +22,142 @@ function ensureElements() {
   titleEl = document.getElementById("dialogTitle");
   messageEl = document.getElementById("dialogMessage");
   inputEl = document.getElementById("dialogInput");
+  fieldsEl = document.getElementById("dialogFields");
   confirmBtn = document.getElementById("dialogConfirm");
   cancelBtn = document.getElementById("dialogCancel");
 
   if (!dialogEl) {
     throw new Error("Missing required element: #appDialog");
   }
+
+  if (!titleEl) {
+    throw new Error("Missing required element: #dialogTitle");
+  }
+
+  if (!messageEl) {
+    throw new Error("Missing required element: #dialogMessage");
+  }
+
+  if (!inputEl) {
+    throw new Error("Missing required element: #dialogInput");
+  }
+
+  if (!fieldsEl) {
+    throw new Error("Missing required element: #dialogFields");
+  }
+
+  if (!confirmBtn) {
+    throw new Error("Missing required element: #dialogConfirm");
+  }
+
+  if (!cancelBtn) {
+    throw new Error("Missing required element: #dialogCancel");
+  }
 }
 
 function resetDialog() {
   titleEl.textContent = "";
   messageEl.textContent = "";
+
   inputEl.value = "";
+  inputEl.placeholder = "";
   inputEl.hidden = true;
+
+  fieldsEl.innerHTML = "";
+  fieldsEl.hidden = true;
+
   cancelBtn.hidden = false;
+  cancelBtn.textContent = "Cancel";
   confirmBtn.textContent = "OK";
+}
+
+function showManagedDialog({
+  focusEl = null,
+  selectFocus = false,
+  keydownTargets = [],
+  onConfirm,
+  onCancel,
+}) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", handleConfirm);
+      cancelBtn.removeEventListener("click", handleCancel);
+      dialogEl.removeEventListener("close", handleClose);
+
+      keydownTargets.forEach((target) => {
+        target.removeEventListener("keydown", handleKeydown);
+      });
+    };
+
+    const settle = (value, { shouldClose = true } = {}) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+
+      if (shouldClose && dialogEl.open) {
+        dialogEl.close();
+      }
+
+      resolve(value);
+    };
+
+    const handleConfirm = () => {
+      onConfirm(settle);
+    };
+
+    const handleCancel = () => {
+      if (onCancel) {
+        onCancel(settle);
+        return;
+      }
+
+      settle(null);
+    };
+
+    const handleClose = () => {
+      settle(null, { shouldClose: false });
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key !== "Enter" || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      event.preventDefault();
+      handleConfirm();
+    };
+
+    confirmBtn.addEventListener("click", handleConfirm);
+    cancelBtn.addEventListener("click", handleCancel);
+    dialogEl.addEventListener("close", handleClose);
+
+    keydownTargets.forEach((target) => {
+      target.addEventListener("keydown", handleKeydown);
+    });
+
+    dialogEl.showModal();
+
+    if (focusEl) {
+      focusEl.focus();
+
+      if (selectFocus && typeof focusEl.select === "function") {
+        focusEl.select();
+      }
+    } else {
+      confirmBtn.focus();
+    }
+  });
 }
 
 /**
@@ -50,24 +172,38 @@ export function showAlert(message, { title = "" } = {}) {
   cancelBtn.hidden = true;
 
   return new Promise((resolve) => {
+    let settled = false;
+
     const cleanup = () => {
-      confirmBtn.removeEventListener("click", onConfirm);
-      dialogEl.removeEventListener("close", onClose);
+      confirmBtn.removeEventListener("click", handleConfirm);
+      dialogEl.removeEventListener("close", handleClose);
     };
 
-    const onConfirm = () => {
+    const settle = (shouldClose) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
       cleanup();
-      dialogEl.close();
+
+      if (shouldClose && dialogEl.open) {
+        dialogEl.close();
+      }
+
       resolve();
     };
 
-    const onClose = () => {
-      cleanup();
-      resolve();
+    const handleConfirm = () => {
+      settle(true);
     };
 
-    confirmBtn.addEventListener("click", onConfirm);
-    dialogEl.addEventListener("close", onClose);
+    const handleClose = () => {
+      settle(false);
+    };
+
+    confirmBtn.addEventListener("click", handleConfirm);
+    dialogEl.addEventListener("close", handleClose);
     dialogEl.showModal();
     confirmBtn.focus();
   });
@@ -76,7 +212,10 @@ export function showAlert(message, { title = "" } = {}) {
 /**
  * Shows a confirm dialog. Returns a promise that resolves to true (confirm) or false (cancel).
  */
-export function showConfirm(message, { title = "", confirmLabel = "Confirm", cancelLabel = "Cancel" } = {}) {
+export function showConfirm(
+  message,
+  { title = "", confirmLabel = "Confirm", cancelLabel = "Cancel" } = {},
+) {
   ensureElements();
   resetDialog();
 
@@ -85,42 +224,30 @@ export function showConfirm(message, { title = "", confirmLabel = "Confirm", can
   confirmBtn.textContent = confirmLabel;
   cancelBtn.textContent = cancelLabel;
 
-  return new Promise((resolve) => {
-    const cleanup = () => {
-      confirmBtn.removeEventListener("click", onConfirm);
-      cancelBtn.removeEventListener("click", onCancel);
-      dialogEl.removeEventListener("close", onClose);
-    };
-
-    const onConfirm = () => {
-      cleanup();
-      dialogEl.close();
-      resolve(true);
-    };
-
-    const onCancel = () => {
-      cleanup();
-      dialogEl.close();
-      resolve(false);
-    };
-
-    const onClose = () => {
-      cleanup();
-      resolve(false);
-    };
-
-    confirmBtn.addEventListener("click", onConfirm);
-    cancelBtn.addEventListener("click", onCancel);
-    dialogEl.addEventListener("close", onClose);
-    dialogEl.showModal();
-    confirmBtn.focus();
+  return showManagedDialog({
+    focusEl: confirmBtn,
+    onConfirm: (settle) => {
+      settle(true);
+    },
+    onCancel: (settle) => {
+      settle(false);
+    },
   });
 }
 
 /**
  * Shows a prompt dialog. Returns a promise that resolves to the entered string, or null on cancel.
  */
-export function showPrompt(message, { title = "", defaultValue = "", confirmLabel = "OK", cancelLabel = "Cancel", placeholder = "" } = {}) {
+export function showPrompt(
+  message,
+  {
+    title = "",
+    defaultValue = "",
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    placeholder = "",
+  } = {},
+) {
   ensureElements();
   resetDialog();
 
@@ -132,45 +259,106 @@ export function showPrompt(message, { title = "", defaultValue = "", confirmLabe
   confirmBtn.textContent = confirmLabel;
   cancelBtn.textContent = cancelLabel;
 
-  return new Promise((resolve) => {
-    const cleanup = () => {
-      confirmBtn.removeEventListener("click", onConfirm);
-      cancelBtn.removeEventListener("click", onCancel);
-      dialogEl.removeEventListener("close", onClose);
-      inputEl.removeEventListener("keydown", onKeydown);
-    };
+  return showManagedDialog({
+    focusEl: inputEl,
+    selectFocus: true,
+    keydownTargets: [inputEl],
+    onConfirm: (settle) => {
+      settle(inputEl.value);
+    },
+    onCancel: (settle) => {
+      settle(null);
+    },
+  });
+}
 
-    const onConfirm = () => {
-      const value = inputEl.value;
-      cleanup();
-      dialogEl.close();
-      resolve(value);
-    };
+/**
+ * Shows a multi-field prompt dialog. Returns a promise that resolves to a keyed object, or null on cancel.
+ */
+export function showFormPrompt(
+  message,
+  {
+    title = "",
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    fields = [],
+  } = {},
+) {
+  ensureElements();
+  resetDialog();
 
-    const onCancel = () => {
-      cleanup();
-      dialogEl.close();
-      resolve(null);
-    };
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+  fieldsEl.hidden = false;
 
-    const onClose = () => {
-      cleanup();
-      resolve(null);
-    };
+  const fieldControls = fields.map((field, index) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "dialog-field";
 
-    const onKeydown = (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        onConfirm();
+    const label = document.createElement("span");
+    label.className = "dialog-field-label";
+    label.textContent = field.label ?? field.name;
+
+    const controlId = `dialogField-${index}-${field.name}`;
+
+    let control;
+
+    if (field.multiline) {
+      control = document.createElement("textarea");
+      control.rows = field.rows ?? 3;
+      control.className = "dialog-textarea";
+    } else {
+      control = document.createElement("input");
+      control.type = field.type ?? "text";
+      control.className = "dialog-input";
+    }
+
+    control.id = controlId;
+    control.name = field.name;
+    control.placeholder = field.placeholder ?? "";
+    control.value = field.defaultValue ?? "";
+    control.required = Boolean(field.required);
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(control);
+    fieldsEl.appendChild(wrapper);
+
+    return {
+      field,
+      control,
+    };
+  });
+
+  const focusTarget = fieldControls[0]?.control ?? confirmBtn;
+
+  return showManagedDialog({
+    focusEl: focusTarget,
+    selectFocus: focusTarget instanceof HTMLInputElement,
+    onConfirm: (settle) => {
+      const values = {};
+
+      for (const { field, control } of fieldControls) {
+        const value = control.value ?? "";
+
+        if (field.required && !value.trim()) {
+          control.focus();
+
+          if (typeof control.reportValidity === "function") {
+            control.reportValidity();
+          }
+
+          return;
+        }
+
+        values[field.name] = value;
       }
-    };
 
-    confirmBtn.addEventListener("click", onConfirm);
-    cancelBtn.addEventListener("click", onCancel);
-    dialogEl.addEventListener("close", onClose);
-    inputEl.addEventListener("keydown", onKeydown);
-    dialogEl.showModal();
-    inputEl.focus();
-    inputEl.select();
+      settle(values);
+    },
+    onCancel: (settle) => {
+      settle(null);
+    },
   });
 }

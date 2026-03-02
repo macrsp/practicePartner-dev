@@ -389,20 +389,48 @@ audio {
   display: none;
 }
 
-.dialog-input {
+.dialog-input,
+.dialog-textarea {
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
   font-size: 14px;
   font-family: inherit;
-  margin-bottom: 16px;
   outline: none;
   transition: border-color 0.15s ease;
+  background: #fff;
 }
 
-.dialog-input:focus {
+.dialog-input {
+  margin-bottom: 16px;
+}
+
+.dialog-textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.dialog-input:focus,
+.dialog-textarea:focus {
   border-color: var(--primary);
+}
+
+.dialog-fields {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 6px;
+}
+
+.dialog-field-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .dialog-actions {
