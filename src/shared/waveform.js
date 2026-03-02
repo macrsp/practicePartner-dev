@@ -33,13 +33,11 @@ export function createWaveform({ mountEl, onSelectionChange }) {
   let cachedPeaks = null;
   let cachedPeaksWidth = 0;
 
-  function resize() {
-    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
-    canvas.height = 140;
-    draw();
-  }
+  const handleResize = () => {
+    resize();
+  };
 
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", handleResize);
 
   canvas.addEventListener("pointerdown", handlePointerDown);
   canvas.addEventListener("pointermove", handlePointerMove);
@@ -78,6 +76,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
   function xToTime(x) {
     const duration = getDuration();
+
     if (!duration) {
       return 0;
     }
@@ -87,11 +86,18 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
   function timeToX(time) {
     const duration = getDuration();
+
     if (!duration) {
       return 0;
     }
 
     return (clamp(time, 0, duration) / duration) * canvas.width;
+  }
+
+  function resize() {
+    canvas.width = Math.max(320, Math.floor(mountEl.clientWidth || 320));
+    canvas.height = 140;
+    draw();
   }
 
   function computePeaks() {
@@ -117,12 +123,15 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
       for (let i = 0; i < step; i += 1) {
         const sample = channelData[offset + i];
+
         if (sample === undefined) {
           break;
         }
+
         if (sample < min) {
           min = sample;
         }
+
         if (sample > max) {
           max = sample;
         }
@@ -295,6 +304,15 @@ export function createWaveform({ mountEl, onSelectionChange }) {
     draw();
   }
 
+  function destroy() {
+    window.removeEventListener("resize", handleResize);
+    canvas.removeEventListener("pointerdown", handlePointerDown);
+    canvas.removeEventListener("pointermove", handlePointerMove);
+    canvas.removeEventListener("pointerup", handlePointerUp);
+    canvas.removeEventListener("pointerleave", handlePointerUp);
+    canvas.remove();
+  }
+
   function handlePointerDown(event) {
     if (!audioBuffer) {
       return;
@@ -330,6 +348,7 @@ export function createWaveform({ mountEl, onSelectionChange }) {
 
   return {
     clear,
+    destroy,
     loadFile,
     setPlaybackTime,
     setSelection,

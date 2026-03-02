@@ -5,18 +5,16 @@
  * @notes Keep this file presentation-only.
  */
 
-import { elements } from "../../shared/shell-ui.js";
-
-export function renderProfiles(profiles, currentProfileId) {
-  elements.profileSelect.innerHTML = "";
+export function renderProfiles(profileSelect, profiles, currentProfileId) {
+  profileSelect.innerHTML = "";
 
   if (!profiles.length) {
     const option = document.createElement("option");
     option.textContent = "No profiles";
     option.disabled = true;
     option.selected = true;
-    elements.profileSelect.appendChild(option);
-    elements.profileSelect.disabled = true;
+    profileSelect.appendChild(option);
+    profileSelect.disabled = true;
     return;
   }
 
@@ -24,9 +22,9 @@ export function renderProfiles(profiles, currentProfileId) {
     const option = document.createElement("option");
     option.value = String(profile.id);
     option.textContent = profile.name;
-    elements.profileSelect.appendChild(option);
+    profileSelect.appendChild(option);
   });
 
-  elements.profileSelect.disabled = false;
-  elements.profileSelect.value = String(currentProfileId);
+  profileSelect.disabled = false;
+  profileSelect.value = String(currentProfileId);
 }

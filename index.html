@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
   @role document-shell
-  @owns static markup, semantic structure, and script/style entrypoints
-  @not-owns runtime behavior or styling rules beyond structural classes and ids
+  @owns static shell markup, semantic structure, persistent app chrome, and script/style entrypoints
+  @not-owns route rendering, runtime behavior, or styling rules beyond structural classes and ids
   @notes Keep this file markup-only.
 -->
 <html lang="en">
@@ -17,83 +17,48 @@
     <header class="page-header">
       <h1>Suzuki Practice Partner</h1>
       <p class="small">
-        Waveform-driven section practice with profiles, repeat tracking, and reusable activity shortcuts.
+        Waveform-driven section practice, reusable activities, and planner-to-workspace practice flow.
       </p>
     </header>
 
-    <section class="card">
-      <div class="row">
+    <section class="card shell-toolbar">
+      <div class="row shell-toolbar-row">
+        <nav class="route-nav" aria-label="Views">
+          <button id="workspaceNav" type="button" class="secondary">Workspace</button>
+          <button id="plannerNav" type="button" class="secondary">Planner</button>
+        </nav>
+
         <label for="profileSelect">Profile</label>
         <select id="profileSelect" aria-label="Profile"></select>
         <button id="newProfile" type="button" class="secondary">New Profile</button>
       </div>
     </section>
 
-    <section class="card">
-      <div class="row">
-        <button id="pickFolder" type="button">Pick Music Folder</button>
-        <span id="trackCount" class="small">No folder selected.</span>
-      </div>
-
-      <div class="row">
-        <label for="trackSelect">Track</label>
-        <select id="trackSelect" aria-label="Track"></select>
-      </div>
-
-      <div class="row">
-        <button id="saveSection" type="button">Save Section</button>
-        <span id="abDisplay" class="small">A — • B —</span>
-      </div>
-
-      <div class="row">
-        <label class="checkbox-label" for="loopToggle">
-          <input type="checkbox" id="loopToggle" />
-          Loop section
-        </label>
-      </div>
-
-      <div class="row">
-        <label for="speed">Speed</label>
-        <input type="range" id="speed" min="0.5" max="1.5" step="0.01" value="1.0" />
-        <span id="speedVal">1.00×</span>
-      </div>
-
-      <div class="row">
-        <div class="mastery-pill">
-          Focus mastery: <span id="masteryDisplay">—</span>
+    <section class="card global-transport">
+      <div class="section-header">
+        <div>
+          <h2>Transport</h2>
+          <p class="small">
+            Playback stays available while moving between the workspace and planner.
+          </p>
         </div>
       </div>
-
-      <div id="waveformMount" class="waveform-wrap" aria-label="Waveform"></div>
 
       <audio id="audio" controls></audio>
     </section>
 
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Saved Sections</h2>
-          <p id="sectionSummary" class="small">Select a track to view saved sections for that track.</p>
-        </div>
-      </div>
-      <div id="sectionList" class="section-list"></div>
-    </section>
-
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Activities</h2>
-          <p id="activitySummary" class="small">Select a profile to manage reusable activities.</p>
-        </div>
-        <div class="section-actions">
-          <button id="addTrackActivity" type="button" class="secondary">Add Current Track</button>
-          <button id="addSectionActivity" type="button" class="secondary">Add Focused Section</button>
-          <button id="addCustomActivity" type="button">Add Custom Activity</button>
-        </div>
-      </div>
-      <div id="activityList" class="section-list"></div>
-    </section>
+    <main id="routeMount"></main>
   </div>
+
+  <dialog id="appDialog" class="app-dialog">
+    <h3 id="dialogTitle" class="dialog-title"></h3>
+    <p id="dialogMessage" class="dialog-message"></p>
+    <input id="dialogInput" type="text" class="dialog-input" hidden />
+    <div class="dialog-actions">
+      <button id="dialogCancel" type="button" class="secondary">Cancel</button>
+      <button id="dialogConfirm" type="button">OK</button>
+    </div>
+  </dialog>
 
   <script type="module" src="./src/app/bootstrap.js"></script>
 </body>

@@ -1,7 +1,7 @@
 /**
  * @role renderer-support
- * @owns DOM element lookup shared across feature renderers and bootstrap wiring
- * @not-owns feature rendering logic, application state transitions, or persistence
+ * @owns persistent shell element lookup and shell-level navigation state
+ * @not-owns route-owned element lookup, feature rendering logic, or application state transitions
  * @notes Keep this file limited to shell-level element access.
  */
 
@@ -15,32 +15,26 @@ function getElement(id) {
   return element;
 }
 
-export const elements = {
-  profileSelect: getElement("profileSelect"),
-  newProfile: getElement("newProfile"),
+export function getShellElements() {
+  return {
+    routeMount: getElement("routeMount"),
+    profileSelect: getElement("profileSelect"),
+    newProfile: getElement("newProfile"),
+    workspaceNav: getElement("workspaceNav"),
+    plannerNav: getElement("plannerNav"),
+    audio: getElement("audio"),
+  };
+}
 
-  pickFolder: getElement("pickFolder"),
-  trackCount: getElement("trackCount"),
-  trackSelect: getElement("trackSelect"),
+export function setActiveShellRoute(elements, route) {
+  const navMap = new Map([
+    ["workspace", elements.workspaceNav],
+    ["planner", elements.plannerNav],
+  ]);
 
-  saveSection: getElement("saveSection"),
-  loopToggle: getElement("loopToggle"),
-
-  speed: getElement("speed"),
-  speedVal: getElement("speedVal"),
-
-  masteryDisplay: getElement("masteryDisplay"),
-  abDisplay: getElement("abDisplay"),
-
-  sectionSummary: getElement("sectionSummary"),
-  sectionList: getElement("sectionList"),
-
-  addTrackActivity: getElement("addTrackActivity"),
-  addSectionActivity: getElement("addSectionActivity"),
-  addCustomActivity: getElement("addCustomActivity"),
-  activitySummary: getElement("activitySummary"),
-  activityList: getElement("activityList"),
-
-  waveformMount: getElement("waveformMount"),
-  audio: getElement("audio"),
-};
+  navMap.forEach((button, buttonRoute) => {
+    const isActive = buttonRoute === route;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
+  });
+}

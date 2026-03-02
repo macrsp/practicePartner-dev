@@ -55,6 +55,20 @@ export function openDatabase() {
             autoIncrement: true,
           });
 
+      const plansStore = database.objectStoreNames.contains(STORES.PLANS)
+        ? transaction.objectStore(STORES.PLANS)
+        : database.createObjectStore(STORES.PLANS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
+      const planItemsStore = database.objectStoreNames.contains(STORES.PLAN_ITEMS)
+        ? transaction.objectStore(STORES.PLAN_ITEMS)
+        : database.createObjectStore(STORES.PLAN_ITEMS, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+
       if (!profilesStore.indexNames.contains("byName")) {
         profilesStore.createIndex("byName", "name", { unique: false });
       }
@@ -79,6 +93,20 @@ export function openDatabase() {
 
       if (!activitiesStore.indexNames.contains("byProfileAndTargetType")) {
         activitiesStore.createIndex("byProfileAndTargetType", ["profileId", "targetType"], {
+          unique: false,
+        });
+      }
+
+      if (!plansStore.indexNames.contains("byProfileId")) {
+        plansStore.createIndex("byProfileId", "profileId", { unique: false });
+      }
+
+      if (!planItemsStore.indexNames.contains("byPlanId")) {
+        planItemsStore.createIndex("byPlanId", "planId", { unique: false });
+      }
+
+      if (!planItemsStore.indexNames.contains("byPlanAndPosition")) {
+        planItemsStore.createIndex("byPlanAndPosition", ["planId", "position"], {
           unique: false,
         });
       }

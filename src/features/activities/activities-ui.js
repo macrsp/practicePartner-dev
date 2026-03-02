@@ -1,12 +1,11 @@
 /**
  * @role renderer
  * @owns activity-list rendering, activity summary messaging, and presentation helpers for activity UI
- * @not-owns activity persistence, workspace state transitions, or focus behavior
+ * @not-owns activity persistence, workspace state transitions, plan composition, or focus behavior
  * @notes Keep this file focused on presentation helpers and activity UI rendering.
  */
 
 import { ACTIVITY_TARGET_TYPES } from "../../shared/constants.js";
-import { elements } from "../../shared/shell-ui.js";
 import { createSectionLabel } from "../../shared/utils.js";
 
 export function getActivityTargetLabel(targetType) {
@@ -57,7 +56,56 @@ export function describeActivity(activity, { tracks = [], sectionsById = new Map
   }
 }
 
+export function getActivityUseState(
+  activity,
+  { tracks = [], sectionsById = new Map() } = {},
+) {
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
+    return {
+      interactive: false,
+      label: "Reference only",
+    };
+  }
+
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
+    const isTrackAvailable = tracks.some((track) => track.name === activity.trackName);
+
+    if (!isTrackAvailable) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+  }
+
+  if (activity.targetType === ACTIVITY_TARGET_TYPES.SECTION) {
+    const section = sectionsById.get(activity.sectionId);
+
+    if (!section) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+
+    const isTrackAvailable = tracks.some((track) => track.name === section.trackName);
+
+    if (!isTrackAvailable) {
+      return {
+        interactive: false,
+        label: "Unavailable",
+      };
+    }
+  }
+
+  return {
+    interactive: true,
+    label: "Use",
+  };
+}
+
 export function renderActivities({
+  elements,
   currentProfileId,
   activities,
   selectedActivityId,
@@ -65,6 +113,7 @@ export function renderActivities({
   sectionsById,
   onUse,
   onDelete,
+  onAddToPlan,
 }) {
   elements.activityList.innerHTML = "";
 
@@ -92,7 +141,7 @@ export function renderActivities({
   }
 
   activities.forEach((activity) => {
-    const useState = getActivityUseState(activity, sectionsById);
+    const useState = getActivityUseState(activity, { tracks, sectionsById });
 
     const row = document.createElement("div");
     row.className = "section-row";
@@ -119,6 +168,18 @@ export function renderActivities({
 
     const actions = document.createElement("div");
     actions.className = "section-actions";
+
+    if (onAddToPlan) {
+      const addToPlanButton = document.createElement("button");
+      addToPlanButton.type = "button";
+      addToPlanButton.className = "secondary";
+      addToPlanButton.textContent = "Add to Plan";
+      addToPlanButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onAddToPlan(activity.id);
+      });
+      actions.appendChild(addToPlanButton);
+    }
 
     const useButton = document.createElement("button");
     useButton.type = "button";
@@ -152,28 +213,4 @@ export function renderActivities({
 
     elements.activityList.appendChild(row);
   });
-}
-
-function getActivityUseState(activity, sectionsById) {
-  if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
-    return {
-      interactive: false,
-      label: "Reference only",
-    };
-  }
-
-  if (
-    activity.targetType === ACTIVITY_TARGET_TYPES.SECTION &&
-    !sectionsById.has(activity.sectionId)
-  ) {
-    return {
-      interactive: false,
-      label: "Unavailable",
-    };
-  }
-
-  return {
-    interactive: true,
-    label: "Use",
-  };
 }

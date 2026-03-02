@@ -1,7 +1,7 @@
 /**
  * @role controller
  * @owns section CRUD, focused-section navigation, section playback boundaries, completion tracking, and track-scoped section browsing
- * @not-owns folder persistence, raw track enumeration, activity CRUD, or waveform rendering internals
+ * @not-owns folder persistence, raw track enumeration, activity CRUD, plan CRUD, or waveform rendering internals
  * @notes This controller coordinates with track loading when a section references another track.
  */
 
@@ -13,7 +13,7 @@ import {
   updateSection,
 } from "../../persistence/db.js";
 import { state } from "../../app/state.js";
-import { elements } from "../../shared/shell-ui.js";
+import { showAlert, showConfirm, showPrompt } from "../../shared/dialog.js";
 import {
   calculateMastery,
   createSectionLabel,
@@ -29,15 +29,28 @@ export function createSectionsController({
   refreshMasteryUi,
   syncPlaybackUi,
   renderActivityList,
+  renderPlanList,
   handleError,
 }) {
+  let workspace = null;
+
+  function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    renderSectionList();
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
   async function refreshSections() {
     if (!state.currentProfileId) {
       state.allSections = [];
-      state.sections = [];
+      state.visibleSections = [];
       renderSectionList();
       refreshMasteryUi();
       renderActivityList();
+      renderPlanList();
       return;
     }
 
@@ -55,6 +68,7 @@ export function createSectionsController({
     renderSectionList();
     refreshMasteryUi();
     renderActivityList();
+    renderPlanList();
   }
 
   function getVisibleSections() {
@@ -81,9 +95,14 @@ export function createSectionsController({
 
   function renderSectionList() {
     const visibleSections = getVisibleSections();
-    state.sections = visibleSections;
+    state.visibleSections = visibleSections;
+
+    if (!workspace) {
+      return;
+    }
 
     renderSections({
+      elements: workspace,
       sections: visibleSections,
       activeSectionId: getActiveVisibleSectionId(visibleSections),
       currentTrackName: state.currentTrack?.name ?? null,
@@ -102,17 +121,17 @@ export function createSectionsController({
   async function saveSelectionAsSection() {
     try {
       if (!state.currentProfileId) {
-        window.alert("Select a profile first.");
+        await showAlert("Select a profile first.");
         return;
       }
 
       if (!state.currentTrack) {
-        window.alert("Pick a track first.");
+        await showAlert("Pick a track first.");
         return;
       }
 
       if (state.selection.start == null || state.selection.end == null) {
-        window.alert("Drag on the waveform to mark a section before saving.");
+        await showAlert("Drag on the waveform to mark a section before saving.");
         return;
       }
 
@@ -120,13 +139,23 @@ export function createSectionsController({
       const end = Math.max(state.selection.start, state.selection.end);
 
       if (Math.abs(end - start) < 0.05) {
-        window.alert("The selected section is too short.");
+        await showAlert("The selected section is too short.");
+        return;
+      }
+
+      const label = await showPrompt("Optional name for this section:", {
+        title: "Save Section",
+        placeholder: "e.g. Tricky passage, Coda, mm. 32–40",
+      });
+
+      if (label === null) {
         return;
       }
 
       const sectionId = await addSection({
         profileId: state.currentProfileId,
         trackName: state.currentTrack.name,
+        label: label.trim() || null,
         start,
         end,
         playCount: 0,
@@ -136,45 +165,62 @@ export function createSectionsController({
       });
 
       state.focusedSectionId = sectionId;
+      state.currentPlayingSectionId = null;
       await refreshSections();
     } catch (error) {
       handleError(error);
     }
   }
 
-  async function focusSection(sectionId) {
+  async function focusSection(sectionId, { armForPlayback = false, cuePlayback = false } = {}) {
     try {
       const section = state.allSections.find((item) => item.id === sectionId);
 
       if (!section) {
-        return;
+        return false;
+      }
+
+      const ready = await ensureTrackLoadedForSection(section);
+
+      if (!ready) {
+        return false;
       }
 
       state.focusedSectionId = section.id;
+      state.currentPlayingSectionId = armForPlayback ? section.id : null;
       state.selection = {
         start: section.start,
         end: section.end,
       };
 
-      const matchingTrackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
-
-      if (matchingTrackIndex !== -1 && state.currentTrack?.name !== section.trackName) {
-        await selectTrackByIndex(matchingTrackIndex, { preserveSelection: true });
+      if (cuePlayback) {
+        audio.pause();
+        audio.currentTime = section.start;
+        syncPlaybackUi();
       }
 
       refreshSelectionUi();
       renderSectionList();
       refreshMasteryUi();
+      return true;
     } catch (error) {
       handleError(error);
+      return false;
     }
+  }
+
+  async function cueSectionById(sectionId) {
+    return focusSection(sectionId, {
+      armForPlayback: true,
+      cuePlayback: true,
+    });
   }
 
   async function ensureTrackLoadedForSection(section) {
     const trackIndex = state.tracks.findIndex((track) => track.name === section.trackName);
 
     if (trackIndex === -1) {
-      window.alert(
+      await showAlert(
         `Track "${section.trackName}" is not available in the currently selected folder.`,
       );
       return false;
@@ -189,31 +235,15 @@ export function createSectionsController({
 
   async function playSectionById(sectionId) {
     try {
-      const section = state.allSections.find((item) => item.id === sectionId);
-
-      if (!section) {
-        return;
-      }
-
-      const ready = await ensureTrackLoadedForSection(section);
+      const ready = await focusSection(sectionId, {
+        armForPlayback: true,
+        cuePlayback: true,
+      });
 
       if (!ready) {
         return;
       }
 
-      state.currentPlayingSectionId = section.id;
-      state.focusedSectionId = section.id;
-      state.selection = {
-        start: section.start,
-        end: section.end,
-      };
-
-      refreshSelectionUi();
-      renderSectionList();
-      refreshMasteryUi();
-
-      audio.currentTime = section.start;
-      syncPlaybackUi();
       await audio.play();
     } catch (error) {
       handleError(error);
@@ -237,7 +267,7 @@ export function createSectionsController({
       return;
     }
 
-    if (elements.loopToggle.checked) {
+    if (state.loopEnabled) {
       audio.currentTime = activeSection.start;
       syncPlaybackUi();
       return;
@@ -288,7 +318,10 @@ export function createSectionsController({
         return;
       }
 
-      const confirmed = window.confirm(`Delete section ${createSectionLabel(section)}?`);
+      const confirmed = await showConfirm(`Delete section ${createSectionLabel(section)}?`, {
+        title: "Delete Section",
+        confirmLabel: "Delete",
+      });
 
       if (!confirmed) {
         return;
@@ -311,10 +344,13 @@ export function createSectionsController({
   }
 
   return {
+    attachWorkspace,
+    detachWorkspace,
     refreshSections,
     renderSectionList,
     saveSelectionAsSection,
     focusSection,
+    cueSectionById,
     playSectionById,
     handleAudioBoundary,
     removeSection,

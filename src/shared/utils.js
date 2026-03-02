@@ -36,12 +36,19 @@ export function formatTime(totalSeconds) {
 }
 
 export function createSectionLabel(section) {
-  return `${formatTime(section.start)} → ${formatTime(section.end)}`;
+  const timeRange = `${formatTime(section.start)} → ${formatTime(section.end)}`;
+
+  if (section.label) {
+    return `${section.label} (${timeRange})`;
+  }
+
+  return timeRange;
 }
 
 export function normalizeSectionRecord(section) {
   return {
     ...section,
+    label: section.label ?? null,
     playCount: section.playCount ?? 0,
     mastery: section.mastery ?? 0,
     lastPlayed: section.lastPlayed ?? 0,
