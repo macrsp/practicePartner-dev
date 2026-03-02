@@ -36,6 +36,7 @@ Core capabilities currently include:
 * selecting a music folder from the local filesystem
 * choosing tracks from that folder
 * marking A/B points on a waveform
+* controlling playback from the workspace waveform player
 * saving sections per profile
 * replaying saved sections
 * looping saved sections
@@ -99,7 +100,7 @@ The current product is organized around these major regions:
 
 1. Header / app identity
 2. Profile controls
-3. Persistent global transport
+3. Workspace-local waveform player
 4. Workspace route
 5. Folder selection and track selection
 6. A/B marking and save controls
@@ -132,7 +133,7 @@ The current product is organized around these major regions:
 * App shows saved sections for the selected track.
 * User selects a saved section.
 * App focuses the associated time range.
-* User plays the section from the shared transport.
+* User plays the section from the workspace waveform player.
 * App loops or completes playback according to settings.
 
 ### 4. Create A Reusable Activity
@@ -394,7 +395,7 @@ Use these statuses consistently:
 * **REQ-037 - Workspace and Planner navigation**
 
   * Allocation: Navigation and workflow
-  * The user can move between a Workspace view and a separate Planner view without losing access to the shared transport.
+  * The user can move between a Workspace view and a separate Planner view, with playback controls living in the Workspace rather than in persistent shell chrome.
 
 * **REQ-038 - Current practice plan**
 
@@ -491,7 +492,7 @@ Use these statuses consistently:
 ### Accepted Decisions
 
 * The app now uses separate Workspace and Planner views.
-* The shared audio transport remains persistent outside the route mount.
+* Playback controls live inside the Workspace waveform player rather than in persistent shell chrome.
 * Saved sections are shown only for the currently selected track in the Workspace.
 * Activities are reusable entities and should not be treated as plan-local only.
 * Activities are explicitly nameable.
@@ -501,7 +502,7 @@ Use these statuses consistently:
 * The Planner currently exposes a single persisted current/default plan per profile.
 * The data model should remain open to multiple named plans later, but multi-plan management is not part of the current UX.
 * Playable activities function as planner-to-workspace shortcuts that load or focus the relevant track or section using the existing Workspace controls.
-* For a section-targeted activity, Use must leave the user ready to play that section immediately from the shared transport.
+* For a section-targeted activity, Use must leave the user ready to play that section immediately from the workspace player.
 
 ### Rejected Or Deferred Directions
 
@@ -525,16 +526,15 @@ Use these statuses consistently:
 ### Status
 
 * There is no active planning delta at the moment.
-* The most recently completed slice introduced a separate Planner route, moved activity management there, and added a persisted current plan per profile.
+* The most recently completed slice introduced a separate Planner route, moved activity management there, added a persisted current plan per profile, and localized playback controls to the Workspace waveform player.
 * The Workspace remains the execution surface for track and section playback.
 * The current implementation does not include a separate practice mode.
 
 ### Current Product Shape
 
 * The user selects a profile from persistent shell controls.
-* The app provides a Workspace route for track loading, waveform selection, and saved-section playback.
+* The app provides a Workspace route for track loading, waveform selection, route-local playback control, and saved-section management.
 * The app provides a Planner route for activity management and current-plan composition.
-* The shared audio transport stays available across route changes.
 * The user creates reusable activities in the Planner, using current workspace context when relevant.
 * The user adds activities to a current plan in the Planner.
 * The user uses playable activities from the Planner to navigate into the Workspace and load or focus the relevant target there.
@@ -561,19 +561,20 @@ Use these statuses consistently:
 * Added a persisted current/default practice plan per profile, backed by reusable activities.
 * Added planner-to-workspace activity launch behavior.
 * Fixed section-targeted activity use so it cues the section in the Workspace and leaves the user ready to play that section immediately.
-* Kept the shared audio transport persistent across route changes.
+* Moved playback controls into a workspace-local waveform player and removed shell-owned transport.
 
 ### Requirement Impact
 
 * Updated REQ-035 so activity browsing now lives in the Planner.
 * Updated REQ-036 so activity use now explicitly launches from Planner to Workspace.
-* Added REQ-037, REQ-038, and REQ-039 as implemented baseline behavior.
+* Updated REQ-037 so navigation no longer implies persistent shell-owned transport.
+* Added REQ-038 and REQ-039 as implemented baseline behavior.
 * Kept REQ-023 and REQ-029 through REQ-034 deferred.
 
 ### User-Facing Behavior
 
 * The user switches between Workspace and Planner with route navigation.
-* The Workspace owns track loading, waveform selection, saved-section management, and playback setup.
+* The Workspace owns track loading, waveform selection, saved-section management, and playback controls.
 * The Planner owns reusable activity management and current-plan composition.
 * Clicking Use on a playable activity from the Planner navigates to the Workspace and loads or focuses the target there.
 * Clicking Use on a section-targeted activity cues playback at the section start and arms the section boundary behavior.
@@ -585,7 +586,7 @@ Use these statuses consistently:
 * Activities remain profile-scoped persisted planning state.
 * The current/default plan and its items are now persisted per profile.
 * Activity and plan-item usability still depends on current music-folder availability when playable media is required.
-* The shared transport remains available while moving between Planner and Workspace.
+* Playback continuity is route-local to the Workspace rather than shell-persistent across Planner and Workspace.
 
 ---
 
