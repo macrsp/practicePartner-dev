@@ -135,7 +135,7 @@ export function renderActivities({
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.textContent =
-      "Use the buttons above to add the current track, the focused saved section, or a custom reference.";
+      "Create song or section activities from the Workspace, or add a custom activity here.";
     elements.activityList.appendChild(empty);
     return;
   }
