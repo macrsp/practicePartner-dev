@@ -75,8 +75,10 @@ src/
     db.js
     plan-store.js
   routes/
-    planner-route.js
-    workspace-route.js
+    planner/
+      planner-route.js
+    workspace/
+      workspace-route.js
   shared/
     constants.js
     dialog.js
@@ -411,7 +413,7 @@ export function deletePlanItem(planItemId) {
 }
 </file>
 
-<file path="src/routes/planner-route.js">
+<file path="src/routes/planner/planner-route.js">
 /**
  * @role route-renderer
  * @owns planner-route markup, route-scoped element lookup, planner event wiring, and planner cleanup
@@ -531,7 +533,7 @@ function getRequiredElement(routeRoot, name) {
 }
 </file>
 
-<file path="src/routes/workspace-route.js">
+<file path="src/routes/workspace/workspace-route.js">
 /**
  * @role route-renderer
  * @owns workspace-route markup, route-scoped element lookup, workspace event wiring, and workspace cleanup
