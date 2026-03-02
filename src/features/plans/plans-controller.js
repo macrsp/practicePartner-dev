@@ -1,4 +1,4 @@
-\/**
+/**
  * @role controller
  * @owns current-plan bootstrap, current-plan selection persistence, save/load plan orchestration, add/remove plan item orchestration, and planner current-plan rendering
  * @not-owns activity CRUD, activity launch behavior internals, or low-level IndexedDB helpers
