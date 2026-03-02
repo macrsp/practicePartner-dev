@@ -30,6 +30,7 @@ export function createSectionsController({
   syncPlaybackUi,
   renderActivityList,
   renderPlanList,
+  renderWorkspaceActivityActions,
   handleError,
 }) {
   let workspace = null;
@@ -96,6 +97,7 @@ export function createSectionsController({
   function renderSectionList() {
     const visibleSections = getVisibleSections();
     state.visibleSections = visibleSections;
+    renderWorkspaceActivityActions?.();
 
     if (!workspace) {
       return;

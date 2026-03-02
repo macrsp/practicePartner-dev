@@ -1,8 +1,8 @@
 /**
  * @role controller
- * @owns reusable-activity state refresh, CRUD orchestration, planner library rendering, and activity launch-to-workspace behavior
+ * @owns reusable-activity state refresh, CRUD orchestration, planner library rendering, workspace activity shortcut rendering, and activity launch-to-workspace behavior
  * @not-owns track/section internals, plan persistence, or low-level IndexedDB helpers
- * @notes Keep this controller focused on activity CRUD, planner-library refresh, and workspace launch flows.
+ * @notes Keep this controller focused on activity CRUD, planner-library refresh, workspace shortcut state, and workspace launch flows.
  */
 
 import { state } from "../../app/state.js";
@@ -28,6 +28,7 @@ export function createActivitiesController({
   handleError,
 } = {}) {
   let planner = null;
+  let workspace = null;
 
   function attachPlanner(nextPlanner) {
     planner = nextPlanner;
@@ -38,12 +39,22 @@ export function createActivitiesController({
     planner = null;
   }
 
+  function attachWorkspace(nextWorkspace) {
+    workspace = nextWorkspace;
+    renderWorkspaceActions();
+  }
+
+  function detachWorkspace() {
+    workspace = null;
+  }
+
   async function refreshActivities() {
     if (!state.currentProfileId) {
       state.activities = [];
       state.selectedActivityId = null;
       renderActivityList();
       renderPlanList?.();
+      renderWorkspaceActions();
       return [];
     }
 
@@ -56,6 +67,7 @@ export function createActivitiesController({
 
     renderActivityList();
     renderPlanList?.();
+    renderWorkspaceActions();
     return state.activities;
   }
 
@@ -85,6 +97,25 @@ export function createActivitiesController({
           }
         : null,
     });
+  }
+
+  function renderWorkspaceActions() {
+    if (!workspace) {
+      return;
+    }
+
+    const currentSection = getFocusedSection();
+    const hasProfile = Boolean(state.currentProfileId);
+    const hasTrack = Boolean(state.currentTrack);
+
+    workspace.activityContextSummary.textContent = getWorkspaceActivitySummary({
+      hasProfile,
+      hasTrack,
+      currentSection,
+    });
+
+    workspace.createTrackActivity.disabled = !hasProfile || !hasTrack;
+    workspace.createSectionActivity.disabled = !hasProfile || !currentSection;
   }
 
   async function createActivity(input) {
@@ -139,7 +170,7 @@ export function createActivitiesController({
       }
 
       const name = await showPrompt("Activity name:", {
-        title: "Add Track Activity",
+        title: "Create Song Activity",
         defaultValue: state.currentTrack.name,
       });
       const trimmed = name?.trim();
@@ -171,7 +202,7 @@ export function createActivitiesController({
 
       const defaultName = `${section.trackName} ${createSectionLabel(section)}`;
       const name = await showPrompt("Activity name:", {
-        title: "Add Section Activity",
+        title: "Create Section Activity",
         defaultValue: defaultName,
       });
       const trimmed = name?.trim();
@@ -306,8 +337,11 @@ export function createActivitiesController({
   return {
     attachPlanner,
     detachPlanner,
+    attachWorkspace,
+    detachWorkspace,
     refreshActivities,
     renderActivityList,
+    renderWorkspaceActions,
     createActivity,
     saveActivity,
     createTrackActivityFromCurrentTrack,
@@ -332,6 +366,22 @@ function getFocusedSection() {
   }
 
   return state.allSections.find((section) => section.id === targetSectionId) ?? null;
+}
+
+function getWorkspaceActivitySummary({ hasProfile, hasTrack, currentSection }) {
+  if (!hasProfile) {
+    return "Select a profile to create activities from the current workspace context.";
+  }
+
+  if (!hasTrack) {
+    return "Pick a song to create a song activity.";
+  }
+
+  if (currentSection) {
+    return `Ready to create from ${state.currentTrack.name} or ${createSectionLabel(currentSection)}.`;
+  }
+
+  return `Ready to create from ${state.currentTrack.name}. Focus a saved section to enable section activity creation.`;
 }
 
 function validateActivityInput(input) {

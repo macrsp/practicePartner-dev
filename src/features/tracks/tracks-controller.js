@@ -21,6 +21,7 @@ export function createTracksController({
   refreshMasteryUi,
   renderActivityList,
   renderPlanList,
+  renderWorkspaceActivityActions,
   handleError,
 }) {
   let workspace = null;
@@ -300,6 +301,7 @@ export function createTracksController({
     setTrackCount(workspace, state.trackStatusText);
     workspace.speed.value = String(state.playbackRate);
     setSpeedDisplay(workspace, state.playbackRate);
+    renderWorkspaceActivityActions?.();
   }
 
   return {
