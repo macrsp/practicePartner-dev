@@ -118,7 +118,7 @@ export async function renderWorkspaceRoute({ mountEl, services }) {
 
           <div class="section-actions">
             <button type="button" class="secondary" data-workspace-el="createTrackActivity">
-              Create from Song
+              Create from Track
             </button>
             <button type="button" class="secondary" data-workspace-el="createSectionActivity">
               Create from Section

@@ -1,12 +1,13 @@
-/**
+\/**
  * @role controller
- * @owns current-plan bootstrap, current-plan item refresh, add/remove plan item orchestration, and planner current-plan rendering
+ * @owns current-plan bootstrap, current-plan selection persistence, save/load plan orchestration, add/remove plan item orchestration, and planner current-plan rendering
  * @not-owns activity CRUD, activity launch behavior internals, or low-level IndexedDB helpers
- * @notes The current UX exposes one persisted current/default plan per profile while keeping the data model open to multiple plans later.
+ * @notes The current UX now supports loading saved named plans while still maintaining one persisted current/default plan per profile.
  */
 
 import { state } from "../../app/state.js";
 import { DEFAULT_PLAN_NAME } from "../../shared/constants.js";
+import { showPrompt } from "../../shared/dialog.js";
 import {
   addPlan,
   addPlanItem,
@@ -94,6 +95,8 @@ export function createPlansController({ activateActivity, handleError } = {}) {
     renderPlan({
       elements: planner,
       currentProfileId: state.currentProfileId,
+      plans: state.plans,
+      currentPlanId: state.currentPlanId,
       plan: getCurrentPlan(),
       planItems: state.planItems,
       activitiesById,
@@ -157,6 +160,78 @@ export function createPlansController({ activateActivity, handleError } = {}) {
     }
   }
 
+  async function setCurrentPlanId(planId) {
+    try {
+      if (!state.currentProfileId) {
+        throw new Error("Select a profile first.");
+      }
+
+      const nextPlan = state.plans.find((plan) => plan.id === planId);
+
+      if (!nextPlan) {
+        throw new Error("That plan is no longer available.");
+      }
+
+      state.currentPlanId = nextPlan.id;
+      await persistDefaultPlanSelection(nextPlan.id);
+      await refreshPlanItems();
+    } catch (error) {
+      handleError?.(error);
+    }
+  }
+
+  async function saveCurrentPlanAsNew() {
+    try {
+      const currentPlan = await ensureCurrentPlan();
+      const suggestedName = getSuggestedPlanName(currentPlan.name);
+
+      const rawName = await showPrompt("Plan name:", {
+        title: "Save as New Plan",
+        defaultValue: suggestedName,
+        placeholder: "e.g. Scales Warmup, Lesson Week 4",
+      });
+      const trimmed = rawName?.trim();
+
+      if (!trimmed) {
+        return null;
+      }
+
+      const nextName = makeUniquePlanName(trimmed, state.plans);
+      const now = Date.now();
+
+      await clearDefaultPlanFlags();
+
+      const newPlanId = await addPlan({
+        profileId: state.currentProfileId,
+        name: nextName,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const sourceItems = [...state.planItems].sort(sortPlanItems);
+
+      await Promise.all(
+        sourceItems.map((item, index) =>
+          addPlanItem({
+            planId: newPlanId,
+            activityId: item.activityId,
+            position: index,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ),
+      );
+
+      state.currentPlanId = newPlanId;
+      await refreshPlans();
+      return newPlanId;
+    } catch (error) {
+      handleError?.(error);
+      return null;
+    }
+  }
+
   async function ensureCurrentPlan() {
     if (!state.currentProfileId) {
       throw new Error("Select a profile first.");
@@ -189,6 +264,56 @@ export function createPlansController({ activateActivity, handleError } = {}) {
       .sort(sortPlans);
   }
 
+  async function persistDefaultPlanSelection(planId) {
+    const now = Date.now();
+    const updates = [];
+    const nextPlans = state.plans.map((plan) => {
+      const shouldBeDefault = plan.id === planId;
+
+      if (Boolean(plan.isDefault) === shouldBeDefault) {
+        return plan;
+      }
+
+      const updatedPlan = {
+        ...plan,
+        isDefault: shouldBeDefault,
+        updatedAt: shouldBeDefault ? now : plan.updatedAt,
+      };
+
+      updates.push(updatePlan(updatedPlan));
+      return updatedPlan;
+    });
+
+    if (updates.length) {
+      await Promise.all(updates);
+      state.plans = nextPlans.sort(sortPlans);
+    }
+  }
+
+  async function clearDefaultPlanFlags() {
+    const defaultPlans = state.plans.filter((plan) => plan.isDefault);
+
+    if (!defaultPlans.length) {
+      return;
+    }
+
+    await Promise.all(
+      defaultPlans.map((plan) =>
+        updatePlan({
+          ...plan,
+          isDefault: false,
+        }),
+      ),
+    );
+
+    state.plans = state.plans
+      .map((plan) => ({
+        ...plan,
+        isDefault: false,
+      }))
+      .sort(sortPlans);
+  }
+
   function getCurrentPlan() {
     return state.plans.find((plan) => plan.id === state.currentPlanId) ?? null;
   }
@@ -201,6 +326,8 @@ export function createPlansController({ activateActivity, handleError } = {}) {
     renderPlanList,
     addActivityToCurrentPlan,
     removePlanItem,
+    setCurrentPlanId,
+    saveCurrentPlanAsNew,
   };
 }
 
@@ -230,4 +357,31 @@ function getNextPlanItemPosition(planItems) {
   }
 
   return Math.max(...planItems.map((item) => item.position ?? -1)) + 1;
+}
+
+function getSuggestedPlanName(currentName) {
+  if (!currentName || currentName === DEFAULT_PLAN_NAME) {
+    return "New Plan";
+  }
+
+  return `${currentName} Copy`;
+}
+
+function makeUniquePlanName(name, plans) {
+  const normalized = name.trim().toLocaleLowerCase();
+  const existingNames = new Set(plans.map((plan) => plan.name.trim().toLocaleLowerCase()));
+
+  if (!existingNames.has(normalized)) {
+    return name.trim();
+  }
+
+  let suffix = 2;
+  let candidate = `${name.trim()} ${suffix}`;
+
+  while (existingNames.has(candidate.toLocaleLowerCase())) {
+    suffix += 1;
+    candidate = `${name.trim()} ${suffix}`;
+  }
+
+  return candidate;
 }

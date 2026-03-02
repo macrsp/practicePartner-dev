@@ -149,6 +149,22 @@ h2 {
   background: var(--card-alt);
 }
 
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -441,5 +457,9 @@ audio {
   .planner-summary-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
   }
 }
