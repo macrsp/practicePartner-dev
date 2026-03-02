@@ -233,6 +233,13 @@ export function createActivitiesController({
 
       state.selectedActivityId = activity.id;
       renderActivityList();
+      renderPlanList?.();
+
+      if (activity.targetType === ACTIVITY_TARGET_TYPES.CUSTOM) {
+        throw new Error("This activity is a custom reference and is not directly playable.");
+      }
+
+      await navigateToWorkspace?.();
 
       if (activity.targetType === ACTIVITY_TARGET_TYPES.TRACK) {
         const trackIndex = state.tracks.findIndex((track) => track.name === activity.trackName);
@@ -244,8 +251,6 @@ export function createActivitiesController({
         }
 
         await selectTrackByIndex(trackIndex, { cueAtTime: 0 });
-        await navigateToWorkspace?.();
-        renderActivityList();
         return;
       }
 
@@ -262,12 +267,8 @@ export function createActivitiesController({
           return;
         }
 
-        await navigateToWorkspace?.();
-        renderActivityList();
         return;
       }
-
-      throw new Error("This activity is a custom reference and is not directly playable.");
     } catch (error) {
       handleError?.(error);
     }
@@ -350,10 +351,7 @@ function validateActivityInput(input) {
     throw new Error("Section activities require a saved section.");
   }
 
-  if (
-    input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM &&
-    !input.customReference?.trim()
-  ) {
+  if (input.targetType === ACTIVITY_TARGET_TYPES.CUSTOM && !input.customReference?.trim()) {
     throw new Error("Custom activities require a reference.");
   }
 }

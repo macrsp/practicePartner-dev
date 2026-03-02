@@ -1,6 +1,6 @@
 /**
  * @role renderer
- * @owns current-plan summary messaging and current-plan item list rendering
+ * @owns current-plan summary messaging and current-plan item list rendering for the planner view
  * @not-owns plan persistence, plan mutation rules, or activity launch behavior
  * @notes Keep this file presentation-only.
  */
@@ -39,7 +39,7 @@ export function renderPlan({
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.textContent =
-      "Use Add to Plan from the activity library below to build the current practice plan.";
+      "Use Add to Plan from the activity library on this page to build the current practice plan.";
     elements.planList.appendChild(empty);
     return;
   }
@@ -82,6 +82,7 @@ export function renderPlan({
     useButton.disabled = !useState.interactive || !activity;
     useButton.addEventListener("click", (event) => {
       event.stopPropagation();
+
       if (activity && useState.interactive) {
         onUseActivity(activity.id);
       }

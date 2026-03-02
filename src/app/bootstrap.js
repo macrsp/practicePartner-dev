@@ -1,47 +1,42 @@
 /**
  * @role composition-root
- * @owns app bootstrap, controller composition, DOM event wiring, and global error handling
- * @not-owns business logic for profiles, tracks, sections, activities, or persistence
- * @notes Keep this file thin; push feature logic into dedicated modules.
+ * @owns app bootstrap, shared-service composition, shell event wiring, router initialization, and global error handling
+ * @not-owns route markup, feature business logic, or per-route DOM lookup
+ * @notes Keep this file thin; route modules own route DOM and route-local listeners.
  */
 
 import { openDatabase } from "../persistence/db.js";
-import { elements } from "../shared/shell-ui.js";
 import { showAlert } from "../shared/dialog.js";
-import { renderTracks, setTrackCount } from "../features/tracks/tracks-ui.js";
+import { getShellElements, setActiveShellRoute } from "../shared/shell-ui.js";
 import { createActivitiesController } from "../features/activities/activities-controller.js";
+import { createPlansController } from "../features/plans/plans-controller.js";
 import { createProfilesController } from "../features/profiles/profiles-controller.js";
 import { createSectionsController } from "../features/sections/sections-controller.js";
 import { createSelectionController } from "../features/sections/selection-controller.js";
 import { createTracksController } from "../features/tracks/tracks-controller.js";
-import { createWaveform } from "../shared/waveform.js";
+import { createRouter, ROUTES } from "./router.js";
+import { renderWorkspaceRoute } from "../routes/workspace/workspace-route.js";
+import { renderPlannerRoute } from "../routes/planner/planner-route.js";
 
-const audio = elements.audio;
+const shell = getShellElements();
+const audio = shell.audio;
 
-let selectionController;
+let router;
 let sectionsController;
-let tracksController;
 let activitiesController;
+let plansController;
 
-const waveform = createWaveform({
-  mountEl: elements.waveformMount,
-  onSelectionChange: (selection) => {
-    selectionController.handleWaveformSelectionChange(selection);
-  },
-});
-
-selectionController = createSelectionController({
-  waveform,
+const selectionController = createSelectionController({
   renderSectionList: () => sectionsController.renderSectionList(),
 });
 
-tracksController = createTracksController({
+const tracksController = createTracksController({
   audio,
-  waveform,
   refreshSelectionUi: () => selectionController.refreshSelectionUi(),
   renderSectionList: () => sectionsController.renderSectionList(),
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
   renderActivityList: () => activitiesController.renderActivityList(),
+  renderPlanList: () => plansController.renderPlanList(),
   handleError,
 });
 
@@ -52,74 +47,88 @@ sectionsController = createSectionsController({
   refreshMasteryUi: () => selectionController.refreshMasteryUi(),
   syncPlaybackUi: () => tracksController.syncWaveformPlaybackPosition(),
   renderActivityList: () => activitiesController.renderActivityList(),
+  renderPlanList: () => plansController.renderPlanList(),
   handleError,
 });
 
 activitiesController = createActivitiesController({
   selectTrackByIndex: (...args) => tracksController.selectTrackByIndex(...args),
-  focusSection: (...args) => sectionsController.focusSection(...args),
+  cueSectionById: (...args) => sectionsController.cueSectionById(...args),
+  navigateToWorkspace: () => router?.navigate(ROUTES.WORKSPACE),
+  addActivityToCurrentPlan: (...args) => plansController.addActivityToCurrentPlan(...args),
+  renderPlanList: () => plansController.renderPlanList(),
+  handleError,
+});
+
+plansController = createPlansController({
+  activateActivity: (...args) => activitiesController.activateActivity(...args),
   handleError,
 });
 
 const profilesController = createProfilesController({
+  profileSelect: shell.profileSelect,
   refreshSections: () => sectionsController.refreshSections(),
   refreshActivities: () => activitiesController.refreshActivities(),
+  refreshPlans: () => plansController.refreshPlans(),
   handleError,
 });
 
-bindEvents();
+const services = {
+  audio,
+  shell,
+  selectionController,
+  tracksController,
+  sectionsController,
+  activitiesController,
+  plansController,
+};
+
+router = createRouter({
+  routeMount: shell.routeMount,
+  routes: {
+    [ROUTES.WORKSPACE]: (context) =>
+      renderWorkspaceRoute({
+        ...context,
+        services,
+      }),
+    [ROUTES.PLANNER]: (context) =>
+      renderPlannerRoute({
+        ...context,
+        services,
+      }),
+  },
+  onRouteChange: (route) => {
+    setActiveShellRoute(shell, route);
+  },
+});
+
+bindShellEvents();
 bootstrap().catch(handleError);
 
 async function bootstrap() {
   await openDatabase();
   await profilesController.ensureDefaultProfile();
-
-  renderTracks([], null);
-  setTrackCount("No folder selected.");
-  tracksController.setSpeed(Number(elements.speed.value));
-
   await profilesController.refreshProfiles();
   await tracksController.restoreRememberedFolder();
-  selectionController.refreshSelectionUi();
+  await router.renderCurrentRoute();
 }
 
-function bindEvents() {
-  elements.profileSelect.addEventListener("change", async (event) => {
+function bindShellEvents() {
+  shell.workspaceNav.addEventListener("click", () => {
+    void router.navigate(ROUTES.WORKSPACE);
+  });
+
+  shell.plannerNav.addEventListener("click", () => {
+    void router.navigate(ROUTES.PLANNER);
+  });
+
+  shell.profileSelect.addEventListener("change", async (event) => {
     profilesController.setCurrentProfileId(Number(event.target.value));
     await profilesController.refreshProfiles();
   });
 
-  elements.newProfile.addEventListener("click", () => {
+  shell.newProfile.addEventListener("click", () => {
     void profilesController.createProfile();
-  });
-
-  elements.pickFolder.addEventListener("click", () => {
-    void tracksController.pickMusicFolder();
-  });
-
-  elements.trackSelect.addEventListener("change", (event) => {
-    const nextIndex = Number(event.target.value);
-    void tracksController.selectTrackByIndex(nextIndex);
-  });
-
-  elements.saveSection.addEventListener("click", () => {
-    void sectionsController.saveSelectionAsSection();
-  });
-
-  elements.addTrackActivity.addEventListener("click", () => {
-    void activitiesController.createTrackActivityFromCurrentTrack();
-  });
-
-  elements.addSectionActivity.addEventListener("click", () => {
-    void activitiesController.createSectionActivityFromFocusedSection();
-  });
-
-  elements.addCustomActivity.addEventListener("click", () => {
-    void activitiesController.createCustomActivity();
-  });
-
-  elements.speed.addEventListener("input", (event) => {
-    tracksController.setSpeed(Number(event.target.value));
   });
 
   audio.addEventListener("timeupdate", () => {
@@ -145,6 +154,7 @@ function bindEvents() {
 
   window.addEventListener("unload", () => {
     tracksController.releaseCurrentTrackUrl();
+    router.destroy();
   });
 }
 

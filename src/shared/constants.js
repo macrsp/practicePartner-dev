@@ -6,7 +6,7 @@
  */
 
 export const DB_NAME = "suzukiDB_v4";
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 export const STORES = {
   PROFILES: "profiles",
