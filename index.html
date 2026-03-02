@@ -13,26 +13,22 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="container">
-    <header class="page-header">
-      <h1>Suzuki Practice Partner</h1>
-      <p class="small">
-        Waveform-driven section practice, reusable activities, and planner-to-workspace practice flow.
-      </p>
-    </header>
-
-    <section class="card shell-toolbar">
+  <section class="shell-toolbar">
+    <div class="container shell-toolbar-inner">
       <div class="row shell-toolbar-row">
         <nav class="route-nav" aria-label="Views">
           <button id="workspaceNav" type="button" class="secondary">Workspace</button>
           <button id="plannerNav" type="button" class="secondary">Planner</button>
         </nav>
 
-        <label for="profileSelect">Profile</label>
-        <select id="profileSelect" aria-label="Profile"></select>
-        <button id="newProfile" type="button" class="secondary">New Profile</button>
+        <div class="shell-profile-controls">
+          <label for="profileSelect">Profile</label>
+          <select id="profileSelect" aria-label="Profile"></select>
+          <button id="newProfile" type="button" class="secondary">New Profile</button>
+        </div>
       </div>
-    </section>
+    </div>
+  </section>
 
     <main id="routeMount"></main>
   </div>
