@@ -162,86 +162,6 @@ This section contains the contents of the repository's files.
 }
 </file>
 
-<file path=".github/workflows/build-production-dist.yml">
-# @role workflow
-# @owns CI-only production bundling with esbuild, static dist staging, and artifact upload
-# @not-owns local development architecture, runtime behavior, or source-module structure
-# @notes Keeps source browser-native; only the copied dist/index.html is rewritten to reference the bundled entrypoint.
-
-name: Build Production Dist
-
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - "src/**"
-      - "styles/**"
-      - "index.html"
-      - ".github/workflows/build-production-dist.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - "styles/**"
-      - "index.html"
-      - ".github/workflows/build-production-dist.yml"
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build-dist:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Bundle app with esbuild
-        run: |
-          mkdir -p dist/assets
-          npx --yes esbuild src/app/bootstrap.js \
-            --bundle \
-            --format=esm \
-            --platform=browser \
-            --minify \
-            --outfile=dist/assets/app.js
-
-      - name: Stage static files into dist
-        run: |
-          cp -R styles dist/styles
-
-          python - <<'PY'
-          from pathlib import Path
-
-          source = Path("index.html").read_text(encoding="utf-8")
-          target = '<script type="module" src="./src/app/bootstrap.js"></script>'
-          replacement = '<script type="module" src="./assets/app.js"></script>'
-
-          if target not in source:
-              raise SystemExit("Expected app entrypoint not found in index.html.")
-
-          Path("dist/index.html").write_text(
-              source.replace(target, replacement, 1),
-              encoding="utf-8",
-          )
-          PY
-
-      - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-dist-${{ github.sha }}
-          path: dist
-          if-no-files-found: error
-```}
-</file>
-
 <file path="src/features/tracks/music-folder-store.js">
 /**
  * @role persistence-helper
@@ -1438,6 +1358,85 @@ input:disabled {
 
 dist/
 .DS_Store
+</file>
+
+<file path=".github/workflows/build-production-dist.yml">
+# @role workflow
+# @owns CI-only production bundling with esbuild, static dist staging, and artifact upload
+# @not-owns local development architecture, runtime behavior, or source-module structure
+# @notes Keeps source browser-native; only the copied dist/index.html is rewritten to reference the bundled entrypoint.
+
+name: Build Production Dist
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "styles/**"
+      - "index.html"
+      - ".github/workflows/build-production-dist.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "styles/**"
+      - "index.html"
+      - ".github/workflows/build-production-dist.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-dist:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bundle app with esbuild
+        run: |
+          mkdir -p dist/assets
+          npx --yes esbuild src/app/bootstrap.js \
+            --bundle \
+            --format=esm \
+            --platform=browser \
+            --minify \
+            --outfile=dist/assets/app.js
+
+      - name: Stage static files into dist
+        run: |
+          cp -R styles dist/styles
+
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("index.html").read_text(encoding="utf-8")
+          target = '<script type="module" src="./src/app/bootstrap.js"></script>'
+          replacement = '<script type="module" src="./assets/app.js"></script>'
+
+          if target not in source:
+              raise SystemExit("Expected app entrypoint not found in index.html.")
+
+          Path("dist/index.html").write_text(
+              source.replace(target, replacement, 1),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-dist-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
 </file>
 
 <file path="src/features/profiles/profiles-ui.js">
