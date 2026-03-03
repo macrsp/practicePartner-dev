@@ -1986,265 +1986,6 @@ function makeUniquePlanName(name, plans) {
 }
 </file>
 
-<file path="src/features/plans/plans-ui.js">
-/**
- * @role renderer
- * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
- * @not-owns plan persistence, plan mutation rules, or activity launch behavior
- * @notes Keep this file presentation-only.
- */
-
-import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
-
-let activeDragPlanItemId = null;
-
-export function renderPlan({
-  elements,
-  currentProfileId,
-  plans,
-  currentPlanId,
-  plan,
-  planItems,
-  activitiesById,
-  tracks,
-  sectionsById,
-  onUseActivity,
-  onRemoveItem,
-  onReorderItem,
-}) {
-  renderPlanPicker(elements, {
-    currentProfileId,
-    plans,
-    currentPlanId,
-  });
-
-  elements.planName.textContent = plan?.name ?? "Current Plan";
-  elements.planList.innerHTML = "";
-
-  if (!currentProfileId) {
-    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
-
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Select a profile to create, load, and manage practice plans.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
-
-  if (!planItems.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent =
-      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  planItems.forEach((planItem, index) => {
-    const activity = activitiesById.get(planItem.activityId) ?? null;
-    const useState = activity
-      ? getActivityUseState(activity, { tracks, sectionsById })
-      : { interactive: false, label: "Unavailable" };
-
-    const row = document.createElement("div");
-    row.className = "section-row plan-item-row";
-    row.dataset.planItemId = String(planItem.id);
-
-    if (!useState.interactive) {
-      row.classList.add("is-static");
-    }
-
-    const dragBar = document.createElement("div");
-    dragBar.className = "card-drag-bar";
-    dragBar.draggable = true;
-    dragBar.setAttribute("role", "button");
-    dragBar.setAttribute("tabindex", "0");
-    dragBar.setAttribute("aria-label", "Drag to reorder");
-
-    const dragIcon = document.createElement("span");
-    dragIcon.className = "card-drag-icon";
-    dragIcon.textContent = "≡";
-
-    dragBar.appendChild(document.createElement("span")); // left spacer
-    dragBar.appendChild(dragIcon);
-
-    // Ensure the bar doesn't trigger row click behavior.
-    dragBar.addEventListener("click", (event) => event.stopPropagation());
-    dragBar.addEventListener("mousedown", (event) => event.stopPropagation());
-    dragBar.addEventListener("pointerdown", (event) => event.stopPropagation());
-
-    dragBar.addEventListener("dragstart", (event) => {
-      activeDragPlanItemId = planItem.id;
-      row.classList.add("is-dragging");
-
-      try {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", String(planItem.id));
-      } catch {
-        // no-op: some browsers can throw if dataTransfer is unavailable
-      }
-    });
-
-    dragBar.addEventListener("dragend", () => {
-      activeDragPlanItemId = null;
-      row.classList.remove("is-dragging");
-      row.classList.remove("drop-before", "drop-after");
-    });
-
-    const body = document.createElement("div");
-    body.className = "plan-item-body";
-
-    const main = document.createElement("div");
-    main.className = "section-main";
-
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
-
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent = activity
-      ? describeActivity(activity, { tracks, sectionsById })
-      : "This plan item references an activity that no longer exists.";
-
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
-
-    const useButton = document.createElement("button");
-    useButton.type = "button";
-    useButton.textContent = useState.label;
-    useButton.disabled = !useState.interactive || !activity;
-    useButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-
-      if (activity && useState.interactive) {
-        onUseActivity(activity.id);
-      }
-    });
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "danger";
-    removeButton.textContent = "Remove";
-    removeButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onRemoveItem(planItem.id);
-    });
-
-    actions.appendChild(useButton);
-    actions.appendChild(removeButton);
-
-    body.appendChild(main);
-    body.appendChild(actions);
-
-    row.appendChild(dragBar);
-    row.appendChild(body);
-
-    // Drop target behavior (row body is a target; only the drag bar is draggable).
-    if (onReorderItem) {
-      row.addEventListener("dragover", (event) => {
-        if (!activeDragPlanItemId) {
-          return;
-        }
-
-        event.preventDefault();
-
-        const rect = row.getBoundingClientRect();
-        const before = event.clientY < rect.top + rect.height / 2;
-
-        row.classList.toggle("drop-before", before);
-        row.classList.toggle("drop-after", !before);
-
-        try {
-          event.dataTransfer.dropEffect = "move";
-        } catch {
-          // ignore
-        }
-      });
-
-      row.addEventListener("dragleave", () => {
-        row.classList.remove("drop-before", "drop-after");
-      });
-
-      row.addEventListener("drop", (event) => {
-        event.preventDefault();
-
-        const draggedIdRaw =
-          (event.dataTransfer && event.dataTransfer.getData("text/plain")) || null;
-        const draggedId = Number(draggedIdRaw || activeDragPlanItemId);
-        const targetId = planItem.id;
-
-        row.classList.remove("drop-before", "drop-after");
-
-        if (!Number.isFinite(draggedId) || draggedId === targetId) {
-          return;
-        }
-
-        const rect = row.getBoundingClientRect();
-        const before = event.clientY < rect.top + rect.height / 2;
-
-        onReorderItem(draggedId, targetId, { before });
-      });
-    }
-
-    if (activity && useState.interactive) {
-      row.addEventListener("click", () => onUseActivity(activity.id));
-    }
-
-    elements.planList.appendChild(row);
-  });
-}
-
-function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
-  elements.planSelect.innerHTML = "";
-
-  if (!currentProfileId) {
-    const option = document.createElement("option");
-    option.textContent = "Select a profile";
-    option.disabled = true;
-    option.selected = true;
-    elements.planSelect.appendChild(option);
-    elements.planSelect.disabled = true;
-    return;
-  }
-
-  if (!plans.length) {
-    const option = document.createElement("option");
-    option.textContent = "No plans";
-    option.disabled = true;
-    option.selected = true;
-    elements.planSelect.appendChild(option);
-    elements.planSelect.disabled = true;
-    return;
-  }
-
-  plans.forEach((plan) => {
-    const option = document.createElement("option");
-    option.value = String(plan.id);
-    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
-
-    if (plan.id === currentPlanId) {
-      option.selected = true;
-    }
-
-    elements.planSelect.appendChild(option);
-  });
-
-  elements.planSelect.disabled = false;
-}
-
-function createPlanSummary(planItemCount, planCount) {
-  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
-  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
-  return `${itemText} • ${planText}.`;
-}
-</file>
-
 <file path="src/features/profiles/profiles-controller.js">
 /**
  * @role controller
@@ -3200,6 +2941,271 @@ function getRequiredElement(root, name) {
 }
 </file>
 
+<file path="src/features/plans/plans-ui.js">
+/**
+ * @role renderer
+ * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
+ * @not-owns plan persistence, plan mutation rules, or activity launch behavior
+ * @notes Keep this file presentation-only.
+ */
+
+import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
+
+let activeDragPlanItemId = null;
+
+export function renderPlan({
+  elements,
+  currentProfileId,
+  plans,
+  currentPlanId,
+  plan,
+  planItems,
+  activitiesById,
+  tracks,
+  sectionsById,
+  onUseActivity,
+  onRemoveItem,
+  onReorderItem,
+}) {
+  renderPlanPicker(elements, {
+    currentProfileId,
+    plans,
+    currentPlanId,
+  });
+
+  elements.planName.textContent = plan?.name ?? "Current Plan";
+  elements.planList.innerHTML = "";
+
+  if (!currentProfileId) {
+    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a profile to create, load, and manage practice plans.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
+
+  if (!planItems.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent =
+      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  planItems.forEach((planItem, index) => {
+    const activity = activitiesById.get(planItem.activityId) ?? null;
+    const useState = activity
+      ? getActivityUseState(activity, { tracks, sectionsById })
+      : { interactive: false, label: "Unavailable" };
+
+    const row = document.createElement("div");
+    row.className = "section-row plan-item-row";
+    row.dataset.planItemId = String(planItem.id);
+
+    if (!useState.interactive) {
+      row.classList.add("is-static");
+    }
+
+    const dragBar = document.createElement("div");
+    dragBar.className = "card-drag-bar";
+    dragBar.draggable = true;
+    dragBar.setAttribute("role", "button");
+    dragBar.setAttribute("tabindex", "0");
+    dragBar.setAttribute("aria-label", "Drag to reorder");
+
+    const dragIcon = document.createElement("span");
+    dragIcon.className = "card-drag-icon";
+    dragIcon.textContent = "≡";
+
+    dragBar.appendChild(document.createElement("span")); // left spacer
+    dragBar.appendChild(dragIcon);
+
+    // Ensure the bar doesn't trigger row click behavior.
+    dragBar.addEventListener("click", (event) => event.stopPropagation());
+    dragBar.addEventListener("mousedown", (event) => event.stopPropagation());
+    dragBar.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+    dragBar.addEventListener("dragstart", (event) => {
+      activeDragPlanItemId = planItem.id;
+      row.classList.add("is-dragging");
+
+      try {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(planItem.id));
+
+        const rowRect = row.getBoundingClientRect();
+        const pointerOffsetX = Math.max(0, event.clientX - rowRect.left);
+        const pointerOffsetY = Math.max(0, event.clientY - rowRect.top);
+
+        event.dataTransfer.setDragImage(row, pointerOffsetX, pointerOffsetY);
+      } catch {
+        // no-op: some browsers can throw if dataTransfer is unavailable
+      }
+    });
+
+    dragBar.addEventListener("dragend", () => {
+      activeDragPlanItemId = null;
+      row.classList.remove("is-dragging");
+      row.classList.remove("drop-before", "drop-after");
+    });
+
+    const body = document.createElement("div");
+    body.className = "plan-item-body";
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent = activity
+      ? describeActivity(activity, { tracks, sectionsById })
+      : "This plan item references an activity that no longer exists.";
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.textContent = useState.label;
+    useButton.disabled = !useState.interactive || !activity;
+    useButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      if (activity && useState.interactive) {
+        onUseActivity(activity.id);
+      }
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "danger";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onRemoveItem(planItem.id);
+    });
+
+    actions.appendChild(useButton);
+    actions.appendChild(removeButton);
+
+    body.appendChild(main);
+    body.appendChild(actions);
+
+    row.appendChild(dragBar);
+    row.appendChild(body);
+
+    // Drop target behavior (row body is a target; only the drag bar is draggable).
+    if (onReorderItem) {
+      row.addEventListener("dragover", (event) => {
+        if (!activeDragPlanItemId) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const rect = row.getBoundingClientRect();
+        const before = event.clientY < rect.top + rect.height / 2;
+
+        row.classList.toggle("drop-before", before);
+        row.classList.toggle("drop-after", !before);
+
+        try {
+          event.dataTransfer.dropEffect = "move";
+        } catch {
+          // ignore
+        }
+      });
+
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drop-before", "drop-after");
+      });
+
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+
+        const draggedIdRaw =
+          (event.dataTransfer && event.dataTransfer.getData("text/plain")) || null;
+        const draggedId = Number(draggedIdRaw || activeDragPlanItemId);
+        const targetId = planItem.id;
+
+        row.classList.remove("drop-before", "drop-after");
+
+        if (!Number.isFinite(draggedId) || draggedId === targetId) {
+          return;
+        }
+
+        const rect = row.getBoundingClientRect();
+        const before = event.clientY < rect.top + rect.height / 2;
+
+        onReorderItem(draggedId, targetId, { before });
+      });
+    }
+
+    if (activity && useState.interactive) {
+      row.addEventListener("click", () => onUseActivity(activity.id));
+    }
+
+    elements.planList.appendChild(row);
+  });
+}
+
+function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
+  elements.planSelect.innerHTML = "";
+
+  if (!currentProfileId) {
+    const option = document.createElement("option");
+    option.textContent = "Select a profile";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  if (!plans.length) {
+    const option = document.createElement("option");
+    option.textContent = "No plans";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  plans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = String(plan.id);
+    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
+
+    if (plan.id === currentPlanId) {
+      option.selected = true;
+    }
+
+    elements.planSelect.appendChild(option);
+  });
+
+  elements.planSelect.disabled = false;
+}
+
+function createPlanSummary(planItemCount, planCount) {
+  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
+  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
+  return `${itemText} • ${planText}.`;
+}
+</file>
+
 <file path="src/features/tracks/tracks-controller.js">
 /**
  * @role controller
@@ -3686,6 +3692,130 @@ function getRequiredElement(routeRoot, name) {
 
   return element;
 }
+</file>
+
+<file path="repomix-instruction.md">
+<!--
+  @role repository-instructions
+  @owns repository-wide AI guidance, implementation-session rules, code-editing response-shape rules, requirement traceability rules, and process rules for keeping ownership metadata current
+  @not-owns feature-planning process, planning-session behavior, or per-file implementation details that belong in planning-context.md or file headers
+  @notes For comment-capable files, file headers are the authoritative source of per-file ownership. planning-context.md is the authoritative source for accepted product requirements and active feature deltas.
+-->
+
+# Repository Instructions
+
+## How this repository is used with AI
+
+The repository uses two distinct artifacts for AI-assisted work:
+
+- `planning-context.md` for accepted product requirements and the currently agreed feature delta
+- `repo-context.xml` for implementation-oriented repository context
+
+In implementation sessions:
+
+1. A generated `repo-context.xml` file is pasted into a chat session.
+2. The user asks for a feature, bug fix, or refactor.
+3. The AI uses the repository context together with `planning-context.md`, when present, to understand accepted requirements and the active feature delta.
+4. Respond with complete file contents for every file that changes.
+5. Do not return diff hunks unless explicitly requested.
+6. Preserve the automated `repo-context.xml` workflow unless the request explicitly changes it.
+
+## Source of truth
+
+Use the following ownership split:
+
+- `planning-context.md` is the source of truth for product requirements, including the accepted baseline and any currently agreed feature delta.
+- `repomix-instruction.md` is the source of truth for repository-wide implementation rules, response shape, requirement traceability rules, and maintenance conventions.
+- File headers are the source of truth for per-file ownership for comment-capable files.
+- The current codebase remains the source of truth for actual implementation details.
+
+Do not treat speculative ideas, aspirational roadmap items, or earlier conversational brainstorming as requirements unless they have been explicitly accepted into `planning-context.md`.
+
+## Repo constraints
+
+- This is a static browser app with no build step.
+- `index.html` contains markup only.
+- `styles.css` contains styling only.
+- Prefer browser-native APIs over added dependencies.
+- Preserve compatibility with the existing IndexedDB database when possible.
+- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
+- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
+- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
+
+## Use of planning context during implementation
+
+When `planning-context.md` is present in the implementation context:
+
+- treat accepted baseline requirements as stable unless the user explicitly asks to change them
+- treat the current planning delta as the only active requirement change surface
+- use requirement IDs, statuses, and allocations from `planning-context.md` when available
+- preserve the distinction between unchanged baseline requirements and feature-specific changes
+- do not silently reinterpret or renegotiate accepted requirements during implementation
+
+If implementation reveals that an accepted requirement is infeasible, contradictory, or materially more complex than expected:
+
+- say so explicitly
+- identify the affected requirement
+- explain the constraint or tradeoff
+- ask to update planning rather than silently changing behavior
+
+## Requirement definition and traceability
+
+Product requirements are defined in `planning-context.md`.
+
+Requirements must be:
+- expressed as user-observable behavior or user-available capability
+- implementation-agnostic
+- stable across refactors
+- allocated to product areas if helpful, but not split by code file
+
+Requirements must not be defined as:
+- file responsibilities
+- modules, classes, functions, APIs, or data stores
+- browser or storage implementation details
+- internal architecture choices
+
+File headers may include requirement traceability metadata, such as requirement IDs affected by that file.
+
+Requirement traceability in file headers is for implementation mapping only. File headers do not define or redefine product requirements.
+
+## File header convention
+
+For comment-capable files, keep a short header at the top of the file using this shape:
+
+- `@role`: what kind of module or file this is
+- `@owns`: what this file is responsible for
+- `@not-owns`: what should be changed elsewhere
+- `@reqs`: optional requirement IDs this file materially contributes to
+- `@notes`: optional short maintenance guidance
+
+Keep headers concise and high-signal. Do not turn them into long prose blocks.
+
+Use `@reqs` for requirement traceability only. Do not use it to redefine product requirements or to imply that requirements are owned by individual files.
+
+## Keeping ownership metadata current
+
+- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
+- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
+- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
+- When a file materially begins or stops contributing to a traced requirement, update its `@reqs` metadata in the same change if that metadata is present in the repository.
+- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
+- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
+- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
+- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules and optional requirement traceability.
+
+## Change preferences
+
+- Favor small, composable modules over a single large file.
+- Avoid frameworks and build tooling unless explicitly requested.
+- Keep the app easy to edit by copy/pasting full files from chat responses.
+- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
+
+## Expected response shape for code changes
+
+- Group output by file path.
+- Return the full contents of each changed file.
+- Keep explanations brief unless the user asks for deeper design rationale.
 </file>
 
 <file path="src/app/state.js">
@@ -4302,130 +4432,6 @@ export function createSectionsController({
     removeSection,
   };
 }
-</file>
-
-<file path="repomix-instruction.md">
-<!--
-  @role repository-instructions
-  @owns repository-wide AI guidance, implementation-session rules, code-editing response-shape rules, requirement traceability rules, and process rules for keeping ownership metadata current
-  @not-owns feature-planning process, planning-session behavior, or per-file implementation details that belong in planning-context.md or file headers
-  @notes For comment-capable files, file headers are the authoritative source of per-file ownership. planning-context.md is the authoritative source for accepted product requirements and active feature deltas.
--->
-
-# Repository Instructions
-
-## How this repository is used with AI
-
-The repository uses two distinct artifacts for AI-assisted work:
-
-- `planning-context.md` for accepted product requirements and the currently agreed feature delta
-- `repo-context.xml` for implementation-oriented repository context
-
-In implementation sessions:
-
-1. A generated `repo-context.xml` file is pasted into a chat session.
-2. The user asks for a feature, bug fix, or refactor.
-3. The AI uses the repository context together with `planning-context.md`, when present, to understand accepted requirements and the active feature delta.
-4. Respond with complete file contents for every file that changes.
-5. Do not return diff hunks unless explicitly requested.
-6. Preserve the automated `repo-context.xml` workflow unless the request explicitly changes it.
-
-## Source of truth
-
-Use the following ownership split:
-
-- `planning-context.md` is the source of truth for product requirements, including the accepted baseline and any currently agreed feature delta.
-- `repomix-instruction.md` is the source of truth for repository-wide implementation rules, response shape, requirement traceability rules, and maintenance conventions.
-- File headers are the source of truth for per-file ownership for comment-capable files.
-- The current codebase remains the source of truth for actual implementation details.
-
-Do not treat speculative ideas, aspirational roadmap items, or earlier conversational brainstorming as requirements unless they have been explicitly accepted into `planning-context.md`.
-
-## Repo constraints
-
-- This is a static browser app with no build step.
-- `index.html` contains markup only.
-- `styles.css` contains styling only.
-- Prefer browser-native APIs over added dependencies.
-- Preserve compatibility with the existing IndexedDB database when possible.
-- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
-- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
-- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
-
-## Use of planning context during implementation
-
-When `planning-context.md` is present in the implementation context:
-
-- treat accepted baseline requirements as stable unless the user explicitly asks to change them
-- treat the current planning delta as the only active requirement change surface
-- use requirement IDs, statuses, and allocations from `planning-context.md` when available
-- preserve the distinction between unchanged baseline requirements and feature-specific changes
-- do not silently reinterpret or renegotiate accepted requirements during implementation
-
-If implementation reveals that an accepted requirement is infeasible, contradictory, or materially more complex than expected:
-
-- say so explicitly
-- identify the affected requirement
-- explain the constraint or tradeoff
-- ask to update planning rather than silently changing behavior
-
-## Requirement definition and traceability
-
-Product requirements are defined in `planning-context.md`.
-
-Requirements must be:
-- expressed as user-observable behavior or user-available capability
-- implementation-agnostic
-- stable across refactors
-- allocated to product areas if helpful, but not split by code file
-
-Requirements must not be defined as:
-- file responsibilities
-- modules, classes, functions, APIs, or data stores
-- browser or storage implementation details
-- internal architecture choices
-
-File headers may include requirement traceability metadata, such as requirement IDs affected by that file.
-
-Requirement traceability in file headers is for implementation mapping only. File headers do not define or redefine product requirements.
-
-## File header convention
-
-For comment-capable files, keep a short header at the top of the file using this shape:
-
-- `@role`: what kind of module or file this is
-- `@owns`: what this file is responsible for
-- `@not-owns`: what should be changed elsewhere
-- `@reqs`: optional requirement IDs this file materially contributes to
-- `@notes`: optional short maintenance guidance
-
-Keep headers concise and high-signal. Do not turn them into long prose blocks.
-
-Use `@reqs` for requirement traceability only. Do not use it to redefine product requirements or to imply that requirements are owned by individual files.
-
-## Keeping ownership metadata current
-
-- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
-- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
-- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
-- When a file materially begins or stops contributing to a traced requirement, update its `@reqs` metadata in the same change if that metadata is present in the repository.
-- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
-- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
-- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
-- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules and optional requirement traceability.
-
-## Change preferences
-
-- Favor small, composable modules over a single large file.
-- Avoid frameworks and build tooling unless explicitly requested.
-- Keep the app easy to edit by copy/pasting full files from chat responses.
-- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
-
-## Expected response shape for code changes
-
-- Group output by file path.
-- Return the full contents of each changed file.
-- Keep explanations brief unless the user asks for deeper design rationale.
 </file>
 
 <file path="src/app/bootstrap.js">
