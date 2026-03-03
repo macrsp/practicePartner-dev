@@ -38,7 +38,7 @@ Do not treat speculative ideas, aspirational roadmap items, or earlier conversat
 
 - This is a static browser app with no build step.
 - `index.html` contains markup only.
-- `styles.css` contains styling only.
+- Styles are split across files under `styles/`, and stylesheet files contain styling only.
 - Prefer browser-native APIs over added dependencies.
 - Preserve compatibility with the existing IndexedDB database when possible.
 - File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
