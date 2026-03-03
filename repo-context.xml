@@ -86,14 +86,34 @@ src/
     utils.js
     waveform.js
 styles/
-  components.css
-  dialog.css
+  components/
+    dialog.css
+    plan-item.css
+    waveform-player.css
+  foundation/
+    tokens.css
+  layout/
+    card.css
+    grids.css
+    panel-block.css
+    row.css
+    section-header.css
+    summary-bar.css
+  responsive/
+    components.css
+    layout.css
+    shell.css
+  shell/
+    shell.css
+  ui/
+    buttons.css
+    checkbox.css
+    empty-state.css
+    forms.css
+    pills.css
+    section-list.css
+    text.css
   global.css
-  layout.css
-  plan-item.css
-  responsive.css
-  shell.css
-  tokens.css
 .gitignore
 index.html
 planning-context.md
@@ -222,225 +242,7 @@ export function deletePlanItem(planItemId) {
 }
 </file>
 
-<file path="styles/components.css">
-/*
- * @role stylesheet-part
- * @owns shared form controls, buttons, waveform player presentation, lists, and reusable component states
- * @not-owns shell-level layout, plan drag affordance details, or dialog presentation
- * @notes Keep selectors class-based where possible and preserve current component behavior.
- */
-
-select,
-input[type="range"] {
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  background: #fff;
-}
-
-select {
-  min-width: 220px;
-  max-width: 100%;
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-button:hover {
-  background: var(--primary-dark);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-button.secondary {
-  background: var(--secondary);
-  color: var(--text);
-}
-
-button.secondary:hover {
-  background: #d1d5db;
-}
-
-button.danger {
-  background: var(--danger);
-  color: #fff;
-}
-
-button.danger:hover {
-  background: var(--danger-dark);
-}
-
-button:disabled,
-select:disabled,
-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-}
-
-.waveform-player {
-  display: grid;
-  gap: 12px;
-}
-
-.waveform-player-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.waveform-player-controls {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: end;
-}
-
-.waveform-player-field {
-  display: grid;
-  gap: 6px;
-  min-width: 220px;
-  flex: 1 1 260px;
-}
-
-.waveform-player-speed-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.waveform-player-speed-row input[type="range"] {
-  flex: 1 1 180px;
-  min-width: 160px;
-}
-
-.waveform-player-loop {
-  min-height: 40px;
-}
-
-.waveform-time {
-  white-space: nowrap;
-}
-
-.waveform-wrap {
-  width: 100%;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
-.waveform-canvas {
-  width: 100%;
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-.mastery-pill {
-  background: #e0f2fe;
-  color: #0369a1;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.section-list {
-  display: grid;
-  gap: 12px;
-}
-
-.section-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  cursor: pointer;
-}
-
-.section-row:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.section-row.is-active {
-  border-color: var(--primary);
-  background: #dbeafe;
-}
-
-.section-row.is-static {
-  cursor: default;
-}
-
-.section-row.is-static:hover {
-  border-color: var(--border);
-  background: var(--card-alt);
-}
-
-.section-main {
-  min-width: 0;
-}
-
-.section-title {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.section-meta {
-  color: var(--muted);
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.empty-state {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 18px;
-  color: var(--muted);
-  background: var(--card-alt);
-}
-
-.small {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.plan-name {
-  margin-bottom: 4px;
-}
-</file>
-
-<file path="styles/dialog.css">
+<file path="styles/components/dialog.css">
 /*
  * @role stylesheet-part
  * @owns native dialog presentation, dialog field layout, and dialog action styling hooks
@@ -537,152 +339,7 @@ input:disabled {
 }
 </file>
 
-<file path="styles/global.css">
-/*
- * @role stylesheet-part
- * @owns global element defaults and low-level typographic/base styling
- * @not-owns shell structure, component-specific presentation, or responsive layout rules
- * @notes Keep this file limited to broadly shared element-level styling.
- */
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--text);
-}
-
-h1 {
-  font-size: 24px;
-  margin: 0 0 6px;
-  font-weight: 700;
-}
-
-h2 {
-  font-size: 18px;
-  margin: 0;
-  font-weight: 650;
-}
-
-label {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 600;
-}
-</file>
-
-<file path="styles/layout.css">
-/*
- * @role stylesheet-part
- * @owns shared layout primitives, cards, route grids, summary bars, and section headers
- * @not-owns button styling, dialog styling, or component-specific interaction states
- * @notes Keep this file focused on structure, spacing, and layout composition.
- */
-
-.card {
-  background: var(--card);
-  padding: 20px;
-  border-radius: var(--radius);
-  margin-bottom: 20px;
-  box-shadow: var(--shadow);
-}
-
-.row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.row:last-child {
-  margin-bottom: 0;
-}
-
-.route-page {
-  min-height: 120px;
-}
-
-.planner-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.workspace-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.sidebar-stack {
-  display: grid;
-  gap: 20px;
-}
-
-.workspace-main-card {
-  overflow: hidden;
-}
-
-.panel-block {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.panel-block:last-child {
-  margin-bottom: 0;
-}
-
-.planner-summary-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-.planner-plan-toolbar {
-  align-items: end;
-}
-
-.planner-field-group {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 260px;
-}
-
-.planner-plan-select {
-  min-width: 0;
-  width: 100%;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-header-compact {
-  margin-bottom: 10px;
-}
-</file>
-
-<file path="styles/plan-item.css">
+<file path="styles/components/plan-item.css">
 /*
  * @role stylesheet-part
  * @owns planner plan-item row structure and drag affordance presentation
@@ -748,12 +405,289 @@ label {
 }
 </file>
 
-<file path="styles/responsive.css">
+<file path="styles/components/waveform-player.css">
 /*
  * @role stylesheet-part
- * @owns responsive layout and component adjustments across shell, planner, workspace, and shared controls
- * @not-owns default desktop styling or token definitions
- * @notes Load this file last so responsive overrides remain easy to reason about.
+ * @owns waveform player layout and canvas presentation
+ * @not-owns shared pill styling, generic form control styling, or audio behavior
+ * @notes Keep this file scoped to waveform-player classes.
+ */
+
+.waveform-player {
+  display: grid;
+  gap: 12px;
+}
+
+.waveform-player-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.waveform-player-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.waveform-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.waveform-player-speed-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.waveform-player-speed-row input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.waveform-player-loop {
+  min-height: 40px;
+}
+
+.waveform-time {
+  white-space: nowrap;
+}
+
+.waveform-wrap {
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.waveform-canvas {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+</file>
+
+<file path="styles/foundation/tokens.css">
+/*
+ * @role stylesheet-part
+ * @owns shared design tokens such as colors, radius, shadow, and semantic surfaces
+ * @not-owns component rules, layout rules, or responsive behavior
+ * @notes Load this file before all other stylesheet parts.
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --card-alt: #f8fafc;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #e5e7eb;
+  --danger: #ef4444;
+  --danger-dark: #dc2626;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  --radius: 14px;
+}
+</file>
+
+<file path="styles/layout/card.css">
+/*
+ * @role stylesheet-part
+ * @owns shared card surface styling
+ * @not-owns grid layout, component-specific internals, or responsive overrides
+ * @notes Keep this file limited to the generic card container.
+ */
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+</file>
+
+<file path="styles/layout/grids.css">
+/*
+ * @role stylesheet-part
+ * @owns route-level grid and stack layout primitives
+ * @not-owns card visuals, panel surfaces, or responsive overrides
+ * @notes Keep this file focused on route composition and grid structure.
+ */
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}
+</file>
+
+<file path="styles/layout/panel-block.css">
+/*
+ * @role stylesheet-part
+ * @owns panel block surface styling inside larger cards
+ * @not-owns overall card styling, route grids, or panel-specific component content
+ * @notes Keep this file limited to nested panel containers.
+ */
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
+</file>
+
+<file path="styles/layout/row.css">
+/*
+ * @role stylesheet-part
+ * @owns shared horizontal row layout primitive
+ * @not-owns card styling, route grid layout, or component-specific behavior
+ * @notes Keep this file limited to the reusable row helper.
+ */
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+</file>
+
+<file path="styles/layout/section-header.css">
+/*
+ * @role stylesheet-part
+ * @owns shared section header layout and compact variant spacing
+ * @not-owns text styling, section-list rows, or responsive overrides
+ * @notes Keep this file focused on header alignment and spacing.
+ */
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-header-compact {
+  margin-bottom: 10px;
+}
+</file>
+
+<file path="styles/layout/summary-bar.css">
+/*
+ * @role stylesheet-part
+ * @owns planner summary bar and related field-group layout
+ * @not-owns button styling, select base styling, or route grid behavior
+ * @notes Keep this file scoped to shared planner summary and toolbar containers.
+ */
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}
+</file>
+
+<file path="styles/responsive/components.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared form controls and component internals
+ * @not-owns desktop defaults, shell layout, or route grid structure
+ * @notes Keep this file focused on mobile overrides for reusable UI pieces.
+ */
+
+@media (max-width: 720px) {
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
+}
+</file>
+
+<file path="styles/responsive/layout.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared layout containers and list-row structure
+ * @not-owns desktop defaults, shell behavior, or waveform-player internals
+ * @notes Keep this file focused on structural mobile and tablet overrides.
  */
 
 @media (max-width: 980px) {
@@ -762,6 +696,41 @@ label {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 720px) {
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-item-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
+  }
+}
+</file>
+
+<file path="styles/responsive/shell.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for persistent shell layout and navigation
+ * @not-owns desktop defaults, shared component styling, or route-specific behavior
+ * @notes Load this file after the base shell and UI files.
+ */
 
 @media (max-width: 720px) {
   .container {
@@ -785,30 +754,6 @@ label {
     min-width: 0;
   }
 
-  .section-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .plan-item-body {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-actions {
-    justify-content: flex-start;
-  }
-
-  select {
-    min-width: 0;
-    width: 100%;
-  }
-
   .route-nav {
     width: 100%;
   }
@@ -816,29 +761,10 @@ label {
   .route-nav button {
     flex: 1 1 0;
   }
-
-  .planner-summary-bar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .planner-plan-toolbar {
-    align-items: stretch;
-  }
-
-  .waveform-player-toolbar,
-  .waveform-player-controls,
-  .waveform-player-speed-row {
-    align-items: stretch;
-  }
-
-  .waveform-time {
-    white-space: normal;
-  }
 }
 </file>
 
-<file path="styles/shell.css">
+<file path="styles/shell/shell.css">
 /*
  * @role stylesheet-part
  * @owns persistent shell chrome, container sizing, toolbar layout, and route navigation states
@@ -900,28 +826,256 @@ label {
 }
 </file>
 
-<file path="styles/tokens.css">
+<file path="styles/ui/buttons.css">
 /*
  * @role stylesheet-part
- * @owns shared design tokens such as colors, radius, shadow, and semantic surfaces
- * @not-owns component rules, layout rules, or responsive behavior
- * @notes Load this file before all other stylesheet parts.
+ * @owns shared button base styling and variant states
+ * @not-owns shell navigation active-state styling, layout, or component-specific placement
+ * @notes Keep this file limited to reusable button appearance rules.
  */
 
-:root {
-  --bg: #f4f6f8;
-  --card: #ffffff;
-  --card-alt: #f8fafc;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --secondary: #e5e7eb;
-  --danger: #ef4444;
-  --danger-dark: #dc2626;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
-  --radius: 14px;
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</file>
+
+<file path="styles/ui/checkbox.css">
+/*
+ * @role stylesheet-part
+ * @owns shared checkbox-label inline layout styling
+ * @not-owns input control visuals, route layout, or responsive overrides
+ * @notes Keep this file limited to checkbox label composition.
+ */
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+</file>
+
+<file path="styles/ui/empty-state.css">
+/*
+ * @role stylesheet-part
+ * @owns shared empty-state surface styling
+ * @not-owns list layout, text utilities, or component-specific behavior
+ * @notes Keep this file limited to reusable empty-state presentation.
+ */
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}
+</file>
+
+<file path="styles/ui/forms.css">
+/*
+ * @role stylesheet-part
+ * @owns shared form control presentation for selects and range inputs
+ * @not-owns dialog-specific field styling, button variants, or responsive layout rules
+ * @notes Keep this file limited to non-dialog form primitives.
+ */
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</file>
+
+<file path="styles/ui/pills.css">
+/*
+ * @role stylesheet-part
+ * @owns shared pill-style status and value display surfaces
+ * @not-owns waveform layout, text utilities, or route-level placement
+ * @notes Keep this file limited to reusable pill presentation.
+ */
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+</file>
+
+<file path="styles/ui/section-list.css">
+/*
+ * @role stylesheet-part
+ * @owns shared list-row presentation used by sections, activities, and plan items
+ * @not-owns plan-item drag affordance internals, route layout, or responsive overrides
+ * @notes Keep this file limited to the reusable list-row pattern and its shared states.
+ */
+
+.section-list {
+  display: grid;
+  gap: 12px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  cursor: pointer;
+}
+
+.section-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.section-row.is-active {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
+.section-row.is-static {
+  cursor: default;
+}
+
+.section-row.is-static:hover {
+  border-color: var(--border);
+  background: var(--card-alt);
+}
+
+.section-main {
+  min-width: 0;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+</file>
+
+<file path="styles/ui/text.css">
+/*
+ * @role stylesheet-part
+ * @owns small supporting text and simple text utility presentation
+ * @not-owns headings, layout, or component interaction states
+ * @notes Keep this file limited to shared low-emphasis text styles.
+ */
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-name {
+  margin-bottom: 4px;
+}
+</file>
+
+<file path="styles/global.css">
+/*
+ * @role stylesheet-part
+ * @owns global element defaults and low-level typographic/base styling
+ * @not-owns shell structure, component-specific presentation, or responsive layout rules
+ * @notes Keep this file limited to broadly shared element-level styling.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 650;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
 }
 </file>
 
@@ -3652,6 +3806,130 @@ function getRequiredElement(root, name) {
 }
 </file>
 
+<file path="repomix-instruction.md">
+<!--
+  @role repository-instructions
+  @owns repository-wide AI guidance, implementation-session rules, code-editing response-shape rules, requirement traceability rules, and process rules for keeping ownership metadata current
+  @not-owns feature-planning process, planning-session behavior, or per-file implementation details that belong in planning-context.md or file headers
+  @notes For comment-capable files, file headers are the authoritative source of per-file ownership. planning-context.md is the authoritative source for accepted product requirements and active feature deltas.
+-->
+
+# Repository Instructions
+
+## How this repository is used with AI
+
+The repository uses two distinct artifacts for AI-assisted work:
+
+- `planning-context.md` for accepted product requirements and the currently agreed feature delta
+- `repo-context.xml` for implementation-oriented repository context
+
+In implementation sessions:
+
+1. A generated `repo-context.xml` file is pasted into a chat session.
+2. The user asks for a feature, bug fix, or refactor.
+3. The AI uses the repository context together with `planning-context.md`, when present, to understand accepted requirements and the active feature delta.
+4. Respond with complete file contents for every file that changes.
+5. Do not return diff hunks unless explicitly requested.
+6. Preserve the automated `repo-context.xml` workflow unless the request explicitly changes it.
+
+## Source of truth
+
+Use the following ownership split:
+
+- `planning-context.md` is the source of truth for product requirements, including the accepted baseline and any currently agreed feature delta.
+- `repomix-instruction.md` is the source of truth for repository-wide implementation rules, response shape, requirement traceability rules, and maintenance conventions.
+- File headers are the source of truth for per-file ownership for comment-capable files.
+- The current codebase remains the source of truth for actual implementation details.
+
+Do not treat speculative ideas, aspirational roadmap items, or earlier conversational brainstorming as requirements unless they have been explicitly accepted into `planning-context.md`.
+
+## Repo constraints
+
+- This is a static browser app with no build step.
+- `index.html` contains markup only.
+- `styles.css` contains styling only.
+- Prefer browser-native APIs over added dependencies.
+- Preserve compatibility with the existing IndexedDB database when possible.
+- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
+- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
+- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
+
+## Use of planning context during implementation
+
+When `planning-context.md` is present in the implementation context:
+
+- treat accepted baseline requirements as stable unless the user explicitly asks to change them
+- treat the current planning delta as the only active requirement change surface
+- use requirement IDs, statuses, and allocations from `planning-context.md` when available
+- preserve the distinction between unchanged baseline requirements and feature-specific changes
+- do not silently reinterpret or renegotiate accepted requirements during implementation
+
+If implementation reveals that an accepted requirement is infeasible, contradictory, or materially more complex than expected:
+
+- say so explicitly
+- identify the affected requirement
+- explain the constraint or tradeoff
+- ask to update planning rather than silently changing behavior
+
+## Requirement definition and traceability
+
+Product requirements are defined in `planning-context.md`.
+
+Requirements must be:
+- expressed as user-observable behavior or user-available capability
+- implementation-agnostic
+- stable across refactors
+- allocated to product areas if helpful, but not split by code file
+
+Requirements must not be defined as:
+- file responsibilities
+- modules, classes, functions, APIs, or data stores
+- browser or storage implementation details
+- internal architecture choices
+
+File headers may include requirement traceability metadata, such as requirement IDs affected by that file.
+
+Requirement traceability in file headers is for implementation mapping only. File headers do not define or redefine product requirements.
+
+## File header convention
+
+For comment-capable files, keep a short header at the top of the file using this shape:
+
+- `@role`: what kind of module or file this is
+- `@owns`: what this file is responsible for
+- `@not-owns`: what should be changed elsewhere
+- `@reqs`: optional requirement IDs this file materially contributes to
+- `@notes`: optional short maintenance guidance
+
+Keep headers concise and high-signal. Do not turn them into long prose blocks.
+
+Use `@reqs` for requirement traceability only. Do not use it to redefine product requirements or to imply that requirements are owned by individual files.
+
+## Keeping ownership metadata current
+
+- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
+- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
+- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
+- When a file materially begins or stops contributing to a traced requirement, update its `@reqs` metadata in the same change if that metadata is present in the repository.
+- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
+- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
+- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
+- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules and optional requirement traceability.
+
+## Change preferences
+
+- Favor small, composable modules over a single large file.
+- Avoid frameworks and build tooling unless explicitly requested.
+- Keep the app easy to edit by copy/pasting full files from chat responses.
+- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
+
+## Expected response shape for code changes
+
+- Group output by file path.
+- Return the full contents of each changed file.
+- Keep explanations brief unless the user asks for deeper design rationale.
+</file>
+
 <file path="src/features/tracks/tracks-controller.js">
 /**
  * @role controller
@@ -4138,130 +4416,6 @@ function getRequiredElement(routeRoot, name) {
 
   return element;
 }
-</file>
-
-<file path="repomix-instruction.md">
-<!--
-  @role repository-instructions
-  @owns repository-wide AI guidance, implementation-session rules, code-editing response-shape rules, requirement traceability rules, and process rules for keeping ownership metadata current
-  @not-owns feature-planning process, planning-session behavior, or per-file implementation details that belong in planning-context.md or file headers
-  @notes For comment-capable files, file headers are the authoritative source of per-file ownership. planning-context.md is the authoritative source for accepted product requirements and active feature deltas.
--->
-
-# Repository Instructions
-
-## How this repository is used with AI
-
-The repository uses two distinct artifacts for AI-assisted work:
-
-- `planning-context.md` for accepted product requirements and the currently agreed feature delta
-- `repo-context.xml` for implementation-oriented repository context
-
-In implementation sessions:
-
-1. A generated `repo-context.xml` file is pasted into a chat session.
-2. The user asks for a feature, bug fix, or refactor.
-3. The AI uses the repository context together with `planning-context.md`, when present, to understand accepted requirements and the active feature delta.
-4. Respond with complete file contents for every file that changes.
-5. Do not return diff hunks unless explicitly requested.
-6. Preserve the automated `repo-context.xml` workflow unless the request explicitly changes it.
-
-## Source of truth
-
-Use the following ownership split:
-
-- `planning-context.md` is the source of truth for product requirements, including the accepted baseline and any currently agreed feature delta.
-- `repomix-instruction.md` is the source of truth for repository-wide implementation rules, response shape, requirement traceability rules, and maintenance conventions.
-- File headers are the source of truth for per-file ownership for comment-capable files.
-- The current codebase remains the source of truth for actual implementation details.
-
-Do not treat speculative ideas, aspirational roadmap items, or earlier conversational brainstorming as requirements unless they have been explicitly accepted into `planning-context.md`.
-
-## Repo constraints
-
-- This is a static browser app with no build step.
-- `index.html` contains markup only.
-- `styles.css` contains styling only.
-- Prefer browser-native APIs over added dependencies.
-- Preserve compatibility with the existing IndexedDB database when possible.
-- File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
-- Comment-capable files include source files, stylesheets, HTML files, workflow YAML files, markdown instruction files, and repository dotfiles such as `.gitignore`.
-- `repomix.config.json` is a strict JSON file and should not receive comment headers; if it ever needs architectural notes, document them here.
-
-## Use of planning context during implementation
-
-When `planning-context.md` is present in the implementation context:
-
-- treat accepted baseline requirements as stable unless the user explicitly asks to change them
-- treat the current planning delta as the only active requirement change surface
-- use requirement IDs, statuses, and allocations from `planning-context.md` when available
-- preserve the distinction between unchanged baseline requirements and feature-specific changes
-- do not silently reinterpret or renegotiate accepted requirements during implementation
-
-If implementation reveals that an accepted requirement is infeasible, contradictory, or materially more complex than expected:
-
-- say so explicitly
-- identify the affected requirement
-- explain the constraint or tradeoff
-- ask to update planning rather than silently changing behavior
-
-## Requirement definition and traceability
-
-Product requirements are defined in `planning-context.md`.
-
-Requirements must be:
-- expressed as user-observable behavior or user-available capability
-- implementation-agnostic
-- stable across refactors
-- allocated to product areas if helpful, but not split by code file
-
-Requirements must not be defined as:
-- file responsibilities
-- modules, classes, functions, APIs, or data stores
-- browser or storage implementation details
-- internal architecture choices
-
-File headers may include requirement traceability metadata, such as requirement IDs affected by that file.
-
-Requirement traceability in file headers is for implementation mapping only. File headers do not define or redefine product requirements.
-
-## File header convention
-
-For comment-capable files, keep a short header at the top of the file using this shape:
-
-- `@role`: what kind of module or file this is
-- `@owns`: what this file is responsible for
-- `@not-owns`: what should be changed elsewhere
-- `@reqs`: optional requirement IDs this file materially contributes to
-- `@notes`: optional short maintenance guidance
-
-Keep headers concise and high-signal. Do not turn them into long prose blocks.
-
-Use `@reqs` for requirement traceability only. Do not use it to redefine product requirements or to imply that requirements are owned by individual files.
-
-## Keeping ownership metadata current
-
-- When adding, removing, renaming, or moving a comment-capable file, update its header in the same change.
-- When introducing a new architectural component such as a controller, store, service, renderer, adapter, or utility module, add or update the relevant file header immediately.
-- When a file’s responsibility changes materially, update its `@owns` and `@not-owns` header entries in the same change.
-- When a file materially begins or stops contributing to a traced requirement, update its `@reqs` metadata in the same change if that metadata is present in the repository.
-- When a new file becomes part of the regular edit surface for future work, give it a header when the file format supports comments.
-- Apply the same header discipline to comment-capable non-code files, including workflow files, markdown docs, and repository dotfiles.
-- If a file format does not support comments, keep any necessary ownership guidance here in `repomix-instruction.md`.
-- Treat this instruction file as the source of repository-wide rules, and treat file headers as the source of per-file ownership rules and optional requirement traceability.
-
-## Change preferences
-
-- Favor small, composable modules over a single large file.
-- Avoid frameworks and build tooling unless explicitly requested.
-- Keep the app easy to edit by copy/pasting full files from chat responses.
-- Minimize comprehensive refactors, but if a change drives a reorganization propose the minimal sensible refactor.
-
-## Expected response shape for code changes
-
-- Group output by file path.
-- Return the full contents of each changed file.
-- Keep explanations brief unless the user asks for deeper design rationale.
 </file>
 
 <file path="src/app/state.js">
@@ -6447,14 +6601,28 @@ function sortActivities(a, b) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Suzuki Practice Partner</title>
-  <link rel="stylesheet" href="./styles/tokens.css" />
-  <link rel="stylesheet" href="./styles/global.css" />
-  <link rel="stylesheet" href="./styles/shell.css" />
-  <link rel="stylesheet" href="./styles/layout.css" />
-  <link rel="stylesheet" href="./styles/components.css" />
-  <link rel="stylesheet" href="./styles/plan-item.css" />
-  <link rel="stylesheet" href="./styles/dialog.css" />
-  <link rel="stylesheet" href="./styles/responsive.css" />
+  <link rel="stylesheet" href="./styles/foundation/tokens.css" />
+  <link rel="stylesheet" href="./styles/foundation/base.css" />
+  <link rel="stylesheet" href="./styles/shell/shell.css" />
+  <link rel="stylesheet" href="./styles/layout/card.css" />
+  <link rel="stylesheet" href="./styles/layout/row.css" />
+  <link rel="stylesheet" href="./styles/layout/grids.css" />
+  <link rel="stylesheet" href="./styles/layout/panel-block.css" />
+  <link rel="stylesheet" href="./styles/layout/summary-bar.css" />
+  <link rel="stylesheet" href="./styles/layout/section-header.css" />
+  <link rel="stylesheet" href="./styles/ui/forms.css" />
+  <link rel="stylesheet" href="./styles/ui/buttons.css" />
+  <link rel="stylesheet" href="./styles/ui/checkbox.css" />
+  <link rel="stylesheet" href="./styles/ui/text.css" />
+  <link rel="stylesheet" href="./styles/ui/pills.css" />
+  <link rel="stylesheet" href="./styles/ui/section-list.css" />
+  <link rel="stylesheet" href="./styles/ui/empty-state.css" />
+  <link rel="stylesheet" href="./styles/components/waveform-player.css" />
+  <link rel="stylesheet" href="./styles/components/dialog.css" />
+  <link rel="stylesheet" href="./styles/components/plan-item.css" />
+  <link rel="stylesheet" href="./styles/responsive/shell.css" />
+  <link rel="stylesheet" href="./styles/responsive/layout.css" />
+  <link rel="stylesheet" href="./styles/responsive/components.css" />
 </head>
 <body>
   <section class="shell-toolbar">
