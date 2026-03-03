@@ -85,6 +85,15 @@ src/
     shell-ui.js
     utils.js
     waveform.js
+  styles/
+    components.css
+    dialogue.css
+    global.css
+    layout.css
+    plan-item.css
+    responsive.css
+    shell.css
+    tokens.css
 .gitignore
 index.html
 planning-context.md
@@ -211,6 +220,709 @@ export function updatePlanItem(planItem) {
 
 export function deletePlanItem(planItemId) {
   return runRequest(STORES.PLAN_ITEMS, "readwrite", (store) => store.delete(planItemId));
+}
+</file>
+
+<file path="src/styles/components.css">
+/*
+ * @role stylesheet-part
+ * @owns shared form controls, buttons, waveform player presentation, lists, and reusable component states
+ * @not-owns shell-level layout, plan drag affordance details, or dialog presentation
+ * @notes Keep selectors class-based where possible and preserve current component behavior.
+ */
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.waveform-player {
+  display: grid;
+  gap: 12px;
+}
+
+.waveform-player-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.waveform-player-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.waveform-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.waveform-player-speed-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.waveform-player-speed-row input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.waveform-player-loop {
+  min-height: 40px;
+}
+
+.waveform-time {
+  white-space: nowrap;
+}
+
+.waveform-wrap {
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.waveform-canvas {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.section-list {
+  display: grid;
+  gap: 12px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  cursor: pointer;
+}
+
+.section-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.section-row.is-active {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
+.section-row.is-static {
+  cursor: default;
+}
+
+.section-row.is-static:hover {
+  border-color: var(--border);
+  background: var(--card-alt);
+}
+
+.section-main {
+  min-width: 0;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-name {
+  margin-bottom: 4px;
+}
+</file>
+
+<file path="src/styles/dialogue.css">
+/*
+ * @role stylesheet-part
+ * @owns native dialog presentation, dialog field layout, and dialog action styling hooks
+ * @not-owns app shell layout, reusable button variants, or route-level component structure
+ * @notes Keep this file limited to the shared dialog surface and its internal fields.
+ */
+
+/* Dialog */
+
+.app-dialog {
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  font-family: inherit;
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.dialog-title:empty {
+  display: none;
+}
+
+.dialog-message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.dialog-message:empty {
+  display: none;
+}
+
+.dialog-input,
+.dialog-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+  background: #fff;
+}
+
+.dialog-input {
+  margin-bottom: 16px;
+}
+
+.dialog-textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.dialog-input:focus,
+.dialog-textarea:focus {
+  border-color: var(--primary);
+}
+
+.dialog-fields {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 6px;
+}
+
+.dialog-field-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</file>
+
+<file path="src/styles/global.css">
+/*
+ * @role stylesheet-part
+ * @owns global element defaults and low-level typographic/base styling
+ * @not-owns shell structure, component-specific presentation, or responsive layout rules
+ * @notes Keep this file limited to broadly shared element-level styling.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 650;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+</file>
+
+<file path="src/styles/layout.css">
+/*
+ * @role stylesheet-part
+ * @owns shared layout primitives, cards, route grids, summary bars, and section headers
+ * @not-owns button styling, dialog styling, or component-specific interaction states
+ * @notes Keep this file focused on structure, spacing, and layout composition.
+ */
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-header-compact {
+  margin-bottom: 10px;
+}
+</file>
+
+<file path="src/styles/plan-item.css">
+/*
+ * @role stylesheet-part
+ * @owns planner plan-item row structure and drag affordance presentation
+ * @not-owns shared section-row styling, planner layout, or dialog rules
+ * @notes Keep this file focused on current-plan item visuals and drag/drop states.
+ */
+
+/* Plan item drag affordance */
+
+.plan-item-row {
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+
+.plan-item-row:hover {
+  background: var(--card-alt);
+}
+
+.card-drag-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(229, 231, 235, 0.45);
+  cursor: grab;
+  user-select: none;
+}
+
+.card-drag-bar:active {
+  cursor: grabbing;
+}
+
+.card-drag-icon {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.plan-item-body {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+
+.plan-item-row.is-dragging {
+  opacity: 0.75;
+}
+
+.plan-item-row.drop-before {
+  box-shadow: inset 0 3px 0 var(--primary);
+}
+
+.plan-item-row.drop-after {
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+</file>
+
+<file path="src/styles/responsive.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive layout and component adjustments across shell, planner, workspace, and shared controls
+ * @not-owns default desktop styling or token definitions
+ * @notes Load this file last so responsive overrides remain easy to reason about.
+ */
+
+@media (max-width: 980px) {
+  .planner-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .container {
+    width: min(1120px, calc(100% - 32px));
+  }
+
+  .app-shell {
+    padding: 16px 0;
+  }
+
+  .shell-toolbar-row {
+    justify-content: flex-start;
+  }
+
+  .shell-profile-controls {
+    width: 100%;
+  }
+
+  .shell-profile-controls select {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-item-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .route-nav {
+    width: 100%;
+  }
+
+  .route-nav button {
+    flex: 1 1 0;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
+}
+</file>
+
+<file path="src/styles/shell.css">
+/*
+ * @role stylesheet-part
+ * @owns persistent shell chrome, container sizing, toolbar layout, and route navigation states
+ * @not-owns route-local layout, shared component styling, or dialog presentation
+ * @notes Keep this file scoped to the persistent app shell.
+ */
+
+.container {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.app-shell {
+  padding: 20px 0 24px;
+}
+
+.shell-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  background: rgba(244, 246, 248, 0.96);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.shell-toolbar-inner {
+  padding: 14px 0;
+}
+
+.shell-toolbar-row {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.shell-profile-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.route-nav {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-nav button.is-active,
+.route-nav button[aria-current="page"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.route-nav button.is-active:hover,
+.route-nav button[aria-current="page"]:hover {
+  background: var(--primary-dark);
+}
+</file>
+
+<file path="src/styles/tokens.css">
+/*
+ * @role stylesheet-part
+ * @owns shared design tokens such as colors, radius, shadow, and semantic surfaces
+ * @not-owns component rules, layout rules, or responsive behavior
+ * @notes Load this file before all other stylesheet parts.
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --card-alt: #f8fafc;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #e5e7eb;
+  --danger: #ef4444;
+  --danger-dark: #dc2626;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  --radius: 14px;
 }
 </file>
 
@@ -5736,7 +6448,14 @@ function sortActivities(a, b) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Suzuki Practice Partner</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles/tokens.css" />
+  <link rel="stylesheet" href="./styles/global.css" />
+  <link rel="stylesheet" href="./styles/shell.css" />
+  <link rel="stylesheet" href="./styles/layout.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+  <link rel="stylesheet" href="./styles/plan-item.css" />
+  <link rel="stylesheet" href="./styles/dialog.css" />
+  <link rel="stylesheet" href="./styles/responsive.css" />
 </head>
 <body>
   <section class="shell-toolbar">
