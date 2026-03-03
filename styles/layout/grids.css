@@ -1,0 +1,32 @@
+/*
+ * @role stylesheet-part
+ * @owns route-level grid and stack layout primitives
+ * @not-owns card visuals, panel surfaces, or responsive overrides
+ * @notes Keep this file focused on route composition and grid structure.
+ */
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}

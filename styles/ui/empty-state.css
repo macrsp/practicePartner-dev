@@ -1,0 +1,14 @@
+/*
+ * @role stylesheet-part
+ * @owns shared empty-state surface styling
+ * @not-owns list layout, text utilities, or component-specific behavior
+ * @notes Keep this file limited to reusable empty-state presentation.
+ */
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}

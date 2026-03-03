@@ -85,12 +85,40 @@ src/
     shell-ui.js
     utils.js
     waveform.js
+styles/
+  components/
+    dialog.css
+    plan-item.css
+    waveform-player.css
+  foundation/
+    base.css
+    tokens.css
+  layout/
+    card.css
+    grids.css
+    panel-block.css
+    row.css
+    section-header.css
+    summary-bar.css
+  responsive/
+    components.css
+    layout.css
+    shell.css
+  shell/
+    shell.css
+  ui/
+    buttons.css
+    checkbox.css
+    empty-state.css
+    forms.css
+    pills.css
+    section-list.css
+    text.css
 .gitignore
 index.html
 planning-context.md
 repomix-instruction.md
 repomix.config.json
-styles.css
 </directory_structure>
 
 <files>
@@ -214,6 +242,746 @@ export function deletePlanItem(planItemId) {
 }
 </file>
 
+<file path="styles/components/plan-item.css">
+/*
+ * @role stylesheet-part
+ * @owns planner plan-item row structure and drag affordance presentation
+ * @not-owns shared section-row styling, planner layout, or dialog rules
+ * @notes Keep this file focused on current-plan item visuals and drag/drop states.
+ */
+
+/* Plan item drag affordance */
+
+.plan-item-row {
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+
+.plan-item-row:hover {
+  background: var(--card-alt);
+}
+
+.card-drag-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(229, 231, 235, 0.45);
+  cursor: grab;
+  user-select: none;
+}
+
+.card-drag-bar:active {
+  cursor: grabbing;
+}
+
+.card-drag-icon {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.plan-item-body {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+
+.plan-item-row.is-dragging {
+  opacity: 0.75;
+}
+
+.plan-item-row.drop-before {
+  box-shadow: inset 0 3px 0 var(--primary);
+}
+
+.plan-item-row.drop-after {
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+</file>
+
+<file path="styles/components/waveform-player.css">
+/*
+ * @role stylesheet-part
+ * @owns waveform player layout and canvas presentation
+ * @not-owns shared pill styling, generic form control styling, or audio behavior
+ * @notes Keep this file scoped to waveform-player classes.
+ */
+
+.waveform-player {
+  display: grid;
+  gap: 12px;
+}
+
+.waveform-player-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.waveform-player-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.waveform-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.waveform-player-speed-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.waveform-player-speed-row input[type="range"] {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.waveform-player-loop {
+  min-height: 40px;
+}
+
+.waveform-time {
+  white-space: nowrap;
+}
+
+.waveform-wrap {
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.waveform-canvas {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+</file>
+
+<file path="styles/foundation/base.css">
+/*
+ * @role stylesheet-part
+ * @owns global element defaults and low-level typographic/base styling
+ * @not-owns shell structure, component-specific presentation, or responsive layout rules
+ * @notes Keep this file limited to broadly shared element-level styling.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 650;
+}
+
+label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+</file>
+
+<file path="styles/foundation/tokens.css">
+/*
+ * @role stylesheet-part
+ * @owns shared design tokens such as colors, radius, shadow, and semantic surfaces
+ * @not-owns component rules, layout rules, or responsive behavior
+ * @notes Load this file before all other stylesheet parts.
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --card-alt: #f8fafc;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #e5e7eb;
+  --danger: #ef4444;
+  --danger-dark: #dc2626;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  --radius: 14px;
+}
+</file>
+
+<file path="styles/layout/card.css">
+/*
+ * @role stylesheet-part
+ * @owns shared card surface styling
+ * @not-owns grid layout, component-specific internals, or responsive overrides
+ * @notes Keep this file limited to the generic card container.
+ */
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+</file>
+
+<file path="styles/layout/grids.css">
+/*
+ * @role stylesheet-part
+ * @owns route-level grid and stack layout primitives
+ * @not-owns card visuals, panel surfaces, or responsive overrides
+ * @notes Keep this file focused on route composition and grid structure.
+ */
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}
+</file>
+
+<file path="styles/layout/panel-block.css">
+/*
+ * @role stylesheet-part
+ * @owns panel block surface styling inside larger cards
+ * @not-owns overall card styling, route grids, or panel-specific component content
+ * @notes Keep this file limited to nested panel containers.
+ */
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
+</file>
+
+<file path="styles/layout/row.css">
+/*
+ * @role stylesheet-part
+ * @owns shared horizontal row layout primitive
+ * @not-owns card styling, route grid layout, or component-specific behavior
+ * @notes Keep this file limited to the reusable row helper.
+ */
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+</file>
+
+<file path="styles/layout/section-header.css">
+/*
+ * @role stylesheet-part
+ * @owns shared section header layout and compact variant spacing
+ * @not-owns text styling, section-list rows, or responsive overrides
+ * @notes Keep this file focused on header alignment and spacing.
+ */
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-header-compact {
+  margin-bottom: 10px;
+}
+</file>
+
+<file path="styles/layout/summary-bar.css">
+/*
+ * @role stylesheet-part
+ * @owns planner summary bar and related field-group layout
+ * @not-owns button styling, select base styling, or route grid behavior
+ * @notes Keep this file scoped to shared planner summary and toolbar containers.
+ */
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}
+</file>
+
+<file path="styles/responsive/components.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared form controls and component internals
+ * @not-owns desktop defaults, shell layout, or route grid structure
+ * @notes Keep this file focused on mobile overrides for reusable UI pieces.
+ */
+
+@media (max-width: 720px) {
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
+}
+</file>
+
+<file path="styles/responsive/layout.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared layout containers and list-row structure
+ * @not-owns desktop defaults, shell behavior, or waveform-player internals
+ * @notes Keep this file focused on structural mobile and tablet overrides.
+ */
+
+@media (max-width: 980px) {
+  .planner-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-item-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
+  }
+}
+</file>
+
+<file path="styles/responsive/shell.css">
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for persistent shell layout and navigation
+ * @not-owns desktop defaults, shared component styling, or route-specific behavior
+ * @notes Load this file after the base shell and UI files.
+ */
+
+@media (max-width: 720px) {
+  .container {
+    width: min(1120px, calc(100% - 32px));
+  }
+
+  .app-shell {
+    padding: 16px 0;
+  }
+
+  .shell-toolbar-row {
+    justify-content: flex-start;
+  }
+
+  .shell-profile-controls {
+    width: 100%;
+  }
+
+  .shell-profile-controls select {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .route-nav {
+    width: 100%;
+  }
+
+  .route-nav button {
+    flex: 1 1 0;
+  }
+}
+</file>
+
+<file path="styles/shell/shell.css">
+/*
+ * @role stylesheet-part
+ * @owns persistent shell chrome, container sizing, toolbar layout, and route navigation states
+ * @not-owns route-local layout, shared component styling, or dialog presentation
+ * @notes Keep this file scoped to the persistent app shell.
+ */
+
+.container {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.app-shell {
+  padding: 20px 0 24px;
+}
+
+.shell-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  background: rgba(244, 246, 248, 0.96);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.shell-toolbar-inner {
+  padding: 14px 0;
+}
+
+.shell-toolbar-row {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.shell-profile-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.route-nav {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-nav button.is-active,
+.route-nav button[aria-current="page"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.route-nav button.is-active:hover,
+.route-nav button[aria-current="page"]:hover {
+  background: var(--primary-dark);
+}
+</file>
+
+<file path="styles/ui/buttons.css">
+/*
+ * @role stylesheet-part
+ * @owns shared button base styling and variant states
+ * @not-owns shell navigation active-state styling, layout, or component-specific placement
+ * @notes Keep this file limited to reusable button appearance rules.
+ */
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</file>
+
+<file path="styles/ui/checkbox.css">
+/*
+ * @role stylesheet-part
+ * @owns shared checkbox-label inline layout styling
+ * @not-owns input control visuals, route layout, or responsive overrides
+ * @notes Keep this file limited to checkbox label composition.
+ */
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+</file>
+
+<file path="styles/ui/empty-state.css">
+/*
+ * @role stylesheet-part
+ * @owns shared empty-state surface styling
+ * @not-owns list layout, text utilities, or component-specific behavior
+ * @notes Keep this file limited to reusable empty-state presentation.
+ */
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--card-alt);
+}
+</file>
+
+<file path="styles/ui/forms.css">
+/*
+ * @role stylesheet-part
+ * @owns shared form control presentation for selects and range inputs
+ * @not-owns dialog-specific field styling, button variants, or responsive layout rules
+ * @notes Keep this file limited to non-dialog form primitives.
+ */
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</file>
+
+<file path="styles/ui/pills.css">
+/*
+ * @role stylesheet-part
+ * @owns shared pill-style status and value display surfaces
+ * @not-owns waveform layout, text utilities, or route-level placement
+ * @notes Keep this file limited to reusable pill presentation.
+ */
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+</file>
+
+<file path="styles/ui/section-list.css">
+/*
+ * @role stylesheet-part
+ * @owns shared list-row presentation used by sections, activities, and plan items
+ * @not-owns plan-item drag affordance internals, route layout, or responsive overrides
+ * @notes Keep this file limited to the reusable list-row pattern and its shared states.
+ */
+
+.section-list {
+  display: grid;
+  gap: 12px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  cursor: pointer;
+}
+
+.section-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.section-row.is-active {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
+.section-row.is-static {
+  cursor: default;
+}
+
+.section-row.is-static:hover {
+  border-color: var(--border);
+  background: var(--card-alt);
+}
+
+.section-main {
+  min-width: 0;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.section-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+</file>
+
+<file path="styles/ui/text.css">
+/*
+ * @role stylesheet-part
+ * @owns small supporting text and simple text utility presentation
+ * @not-owns headings, layout, or component interaction states
+ * @notes Keep this file limited to shared low-emphasis text styles.
+ */
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-name {
+  margin-bottom: 4px;
+}
+</file>
+
 <file path=".gitignore">
 # @role ignore-rules
 # @owns repository-local ignore patterns for generated files and machine-specific clutter
@@ -222,6 +990,80 @@ export function deletePlanItem(planItemId) {
 
 dist/
 .DS_Store
+</file>
+
+<file path=".github/workflows/update-repo-context.yml">
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
+
+name: Update Repo Context
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths-ignore:
+      - repo-context.xml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-repo-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate repo context
+        run: npx --yes repomix@1.11.1 --config repomix.config.json
+
+      - name: Compute safe artifact name
+        shell: bash
+        run: |
+          raw_ref="${GITHUB_REF_NAME}"
+          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+
+          if [ -z "$safe_ref" ]; then
+            safe_ref="unnamed-ref"
+          fi
+
+          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+
+      - name: Upload repo context artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-context-${{ env.safe_ref }}
+          path: repo-context.xml
+
+      - name: Commit updated repo context to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo-context.xml
+
+          if git diff --cached --quiet; then
+            echo "No repo context changes."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh repo context"
+          git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
 <file path="src/features/profiles/profiles-ui.js">
@@ -658,78 +1500,371 @@ export function showFormPrompt(
 }
 </file>
 
-<file path=".github/workflows/update-repo-context.yml">
-# @role workflow
-# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
-# @not-owns application runtime behavior or repository architecture rules
-# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
+<file path="styles/components/dialog.css">
+/**
+ * @role utility-module
+ * @owns promise-based dialog helpers (alert, confirm, prompt, form prompt) using native <dialog>
+ * @not-owns DOM structure of the dialog element (defined in index.html), styling (defined in styles/components/dialog.css and shared UI stylesheets), or business logic
+ * @notes Drop-in replacements for window.alert, window.confirm, and window.prompt that avoid blocking the thread.
+ */
 
-name: Update Repo Context
+let dialogEl;
+let titleEl;
+let messageEl;
+let inputEl;
+let fieldsEl;
+let confirmBtn;
+let cancelBtn;
 
-on:
-  push:
-    branches-ignore:
-      - main
-    paths-ignore:
-      - repo-context.xml
-  workflow_dispatch:
+function ensureElements() {
+  if (dialogEl) {
+    return;
+  }
 
-permissions:
-  contents: write
+  dialogEl = document.getElementById("appDialog");
+  titleEl = document.getElementById("dialogTitle");
+  messageEl = document.getElementById("dialogMessage");
+  inputEl = document.getElementById("dialogInput");
+  fieldsEl = document.getElementById("dialogFields");
+  confirmBtn = document.getElementById("dialogConfirm");
+  cancelBtn = document.getElementById("dialogCancel");
 
-concurrency:
-  group: update-repo-context-${{ github.ref }}
-  cancel-in-progress: true
+  if (!dialogEl) {
+    throw new Error("Missing required element: #appDialog");
+  }
 
-jobs:
-  generate:
-    runs-on: ubuntu-latest
+  if (!titleEl) {
+    throw new Error("Missing required element: #dialogTitle");
+  }
 
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  if (!messageEl) {
+    throw new Error("Missing required element: #dialogMessage");
+  }
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+  if (!inputEl) {
+    throw new Error("Missing required element: #dialogInput");
+  }
 
-      - name: Generate repo context
-        run: npx --yes repomix@1.11.1 --config repomix.config.json
+  if (!fieldsEl) {
+    throw new Error("Missing required element: #dialogFields");
+  }
 
-      - name: Compute safe artifact name
-        shell: bash
-        run: |
-          raw_ref="${GITHUB_REF_NAME}"
-          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+  if (!confirmBtn) {
+    throw new Error("Missing required element: #dialogConfirm");
+  }
 
-          if [ -z "$safe_ref" ]; then
-            safe_ref="unnamed-ref"
-          fi
+  if (!cancelBtn) {
+    throw new Error("Missing required element: #dialogCancel");
+  }
+}
 
-          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+function resetDialog() {
+  titleEl.textContent = "";
+  messageEl.textContent = "";
 
-      - name: Upload repo context artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: repo-context-${{ env.safe_ref }}
-          path: repo-context.xml
+  inputEl.value = "";
+  inputEl.placeholder = "";
+  inputEl.hidden = true;
 
-      - name: Commit updated repo context to branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repo-context.xml
+  fieldsEl.innerHTML = "";
+  fieldsEl.hidden = true;
 
-          if git diff --cached --quiet; then
-            echo "No repo context changes."
-            exit 0
-          fi
+  cancelBtn.hidden = false;
+  cancelBtn.textContent = "Cancel";
+  confirmBtn.textContent = "OK";
+}
 
-          git commit -m "chore: refresh repo context"
-          git push origin HEAD:${GITHUB_REF_NAME}
+function showManagedDialog({
+  focusEl = null,
+  selectFocus = false,
+  keydownTargets = [],
+  onConfirm,
+  onCancel,
+}) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", handleConfirm);
+      cancelBtn.removeEventListener("click", handleCancel);
+      dialogEl.removeEventListener("close", handleClose);
+
+      keydownTargets.forEach((target) => {
+        target.removeEventListener("keydown", handleKeydown);
+      });
+    };
+
+    const settle = (value, { shouldClose = true } = {}) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+
+      if (shouldClose && dialogEl.open) {
+        dialogEl.close();
+      }
+
+      resolve(value);
+    };
+
+    const handleConfirm = () => {
+      onConfirm(settle);
+    };
+
+    const handleCancel = () => {
+      if (onCancel) {
+        onCancel(settle);
+        return;
+      }
+
+      settle(null);
+    };
+
+    const handleClose = () => {
+      settle(null, { shouldClose: false });
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key !== "Enter" || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      event.preventDefault();
+      handleConfirm();
+    };
+
+    confirmBtn.addEventListener("click", handleConfirm);
+    cancelBtn.addEventListener("click", handleCancel);
+    dialogEl.addEventListener("close", handleClose);
+
+    keydownTargets.forEach((target) => {
+      target.addEventListener("keydown", handleKeydown);
+    });
+
+    dialogEl.showModal();
+
+    if (focusEl) {
+      focusEl.focus();
+
+      if (selectFocus && typeof focusEl.select === "function") {
+        focusEl.select();
+      }
+    } else {
+      confirmBtn.focus();
+    }
+  });
+}
+
+/**
+ * Shows an alert dialog. Returns a promise that resolves when dismissed.
+ */
+export function showAlert(message, { title = "" } = {}) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  cancelBtn.hidden = true;
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", handleConfirm);
+      dialogEl.removeEventListener("close", handleClose);
+    };
+
+    const settle = (shouldClose) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+
+      if (shouldClose && dialogEl.open) {
+        dialogEl.close();
+      }
+
+      resolve();
+    };
+
+    const handleConfirm = () => {
+      settle(true);
+    };
+
+    const handleClose = () => {
+      settle(false);
+    };
+
+    confirmBtn.addEventListener("click", handleConfirm);
+    dialogEl.addEventListener("close", handleClose);
+    dialogEl.showModal();
+    confirmBtn.focus();
+  });
+}
+
+/**
+ * Shows a confirm dialog. Returns a promise that resolves to true (confirm) or false (cancel).
+ */
+export function showConfirm(
+  message,
+  { title = "", confirmLabel = "Confirm", cancelLabel = "Cancel" } = {},
+) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+
+  return showManagedDialog({
+    focusEl: confirmBtn,
+    onConfirm: (settle) => {
+      settle(true);
+    },
+    onCancel: (settle) => {
+      settle(false);
+    },
+  });
+}
+
+/**
+ * Shows a prompt dialog. Returns a promise that resolves to the entered string, or null on cancel.
+ */
+export function showPrompt(
+  message,
+  {
+    title = "",
+    defaultValue = "",
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    placeholder = "",
+  } = {},
+) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  inputEl.hidden = false;
+  inputEl.value = defaultValue;
+  inputEl.placeholder = placeholder;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+
+  return showManagedDialog({
+    focusEl: inputEl,
+    selectFocus: true,
+    keydownTargets: [inputEl],
+    onConfirm: (settle) => {
+      settle(inputEl.value);
+    },
+    onCancel: (settle) => {
+      settle(null);
+    },
+  });
+}
+
+/**
+ * Shows a multi-field prompt dialog. Returns a promise that resolves to a keyed object, or null on cancel.
+ */
+export function showFormPrompt(
+  message,
+  {
+    title = "",
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    fields = [],
+  } = {},
+) {
+  ensureElements();
+  resetDialog();
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+  fieldsEl.hidden = false;
+
+  const fieldControls = fields.map((field, index) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "dialog-field";
+
+    const label = document.createElement("span");
+    label.className = "dialog-field-label";
+    label.textContent = field.label ?? field.name;
+
+    const controlId = `dialogField-${index}-${field.name}`;
+
+    let control;
+
+    if (field.multiline) {
+      control = document.createElement("textarea");
+      control.rows = field.rows ?? 3;
+      control.className = "dialog-textarea";
+    } else {
+      control = document.createElement("input");
+      control.type = field.type ?? "text";
+      control.className = "dialog-input";
+    }
+
+    control.id = controlId;
+    control.name = field.name;
+    control.placeholder = field.placeholder ?? "";
+    control.value = field.defaultValue ?? "";
+    control.required = Boolean(field.required);
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(control);
+    fieldsEl.appendChild(wrapper);
+
+    return {
+      field,
+      control,
+    };
+  });
+
+  const focusTarget = fieldControls[0]?.control ?? confirmBtn;
+
+  return showManagedDialog({
+    focusEl: focusTarget,
+    selectFocus: focusTarget instanceof HTMLInputElement,
+    onConfirm: (settle) => {
+      const values = {};
+
+      for (const { field, control } of fieldControls) {
+        const value = control.value ?? "";
+
+        if (field.required && !value.trim()) {
+          control.focus();
+
+          if (typeof control.reportValidity === "function") {
+            control.reportValidity();
+          }
+
+          return;
+        }
+
+        values[field.name] = value;
+      }
+
+      settle(values);
+    },
+    onCancel: (settle) => {
+      settle(null);
+    },
+  });
+}
 </file>
 
 <file path="src/features/sections/sections-ui.js">
@@ -2941,271 +4076,6 @@ function getRequiredElement(root, name) {
 }
 </file>
 
-<file path="src/features/plans/plans-ui.js">
-/**
- * @role renderer
- * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
- * @not-owns plan persistence, plan mutation rules, or activity launch behavior
- * @notes Keep this file presentation-only.
- */
-
-import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
-
-let activeDragPlanItemId = null;
-
-export function renderPlan({
-  elements,
-  currentProfileId,
-  plans,
-  currentPlanId,
-  plan,
-  planItems,
-  activitiesById,
-  tracks,
-  sectionsById,
-  onUseActivity,
-  onRemoveItem,
-  onReorderItem,
-}) {
-  renderPlanPicker(elements, {
-    currentProfileId,
-    plans,
-    currentPlanId,
-  });
-
-  elements.planName.textContent = plan?.name ?? "Current Plan";
-  elements.planList.innerHTML = "";
-
-  if (!currentProfileId) {
-    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
-
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "Select a profile to create, load, and manage practice plans.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
-
-  if (!planItems.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent =
-      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
-    elements.planList.appendChild(empty);
-    return;
-  }
-
-  planItems.forEach((planItem, index) => {
-    const activity = activitiesById.get(planItem.activityId) ?? null;
-    const useState = activity
-      ? getActivityUseState(activity, { tracks, sectionsById })
-      : { interactive: false, label: "Unavailable" };
-
-    const row = document.createElement("div");
-    row.className = "section-row plan-item-row";
-    row.dataset.planItemId = String(planItem.id);
-
-    if (!useState.interactive) {
-      row.classList.add("is-static");
-    }
-
-    const dragBar = document.createElement("div");
-    dragBar.className = "card-drag-bar";
-    dragBar.draggable = true;
-    dragBar.setAttribute("role", "button");
-    dragBar.setAttribute("tabindex", "0");
-    dragBar.setAttribute("aria-label", "Drag to reorder");
-
-    const dragIcon = document.createElement("span");
-    dragIcon.className = "card-drag-icon";
-    dragIcon.textContent = "≡";
-
-    dragBar.appendChild(document.createElement("span")); // left spacer
-    dragBar.appendChild(dragIcon);
-
-    // Ensure the bar doesn't trigger row click behavior.
-    dragBar.addEventListener("click", (event) => event.stopPropagation());
-    dragBar.addEventListener("mousedown", (event) => event.stopPropagation());
-    dragBar.addEventListener("pointerdown", (event) => event.stopPropagation());
-
-    dragBar.addEventListener("dragstart", (event) => {
-      activeDragPlanItemId = planItem.id;
-      row.classList.add("is-dragging");
-
-      try {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", String(planItem.id));
-
-        const rowRect = row.getBoundingClientRect();
-        const pointerOffsetX = Math.max(0, event.clientX - rowRect.left);
-        const pointerOffsetY = Math.max(0, event.clientY - rowRect.top);
-
-        event.dataTransfer.setDragImage(row, pointerOffsetX, pointerOffsetY);
-      } catch {
-        // no-op: some browsers can throw if dataTransfer is unavailable
-      }
-    });
-
-    dragBar.addEventListener("dragend", () => {
-      activeDragPlanItemId = null;
-      row.classList.remove("is-dragging");
-      row.classList.remove("drop-before", "drop-after");
-    });
-
-    const body = document.createElement("div");
-    body.className = "plan-item-body";
-
-    const main = document.createElement("div");
-    main.className = "section-main";
-
-    const title = document.createElement("div");
-    title.className = "section-title";
-    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
-
-    const meta = document.createElement("div");
-    meta.className = "section-meta";
-    meta.textContent = activity
-      ? describeActivity(activity, { tracks, sectionsById })
-      : "This plan item references an activity that no longer exists.";
-
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "section-actions";
-
-    const useButton = document.createElement("button");
-    useButton.type = "button";
-    useButton.textContent = useState.label;
-    useButton.disabled = !useState.interactive || !activity;
-    useButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-
-      if (activity && useState.interactive) {
-        onUseActivity(activity.id);
-      }
-    });
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "danger";
-    removeButton.textContent = "Remove";
-    removeButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onRemoveItem(planItem.id);
-    });
-
-    actions.appendChild(useButton);
-    actions.appendChild(removeButton);
-
-    body.appendChild(main);
-    body.appendChild(actions);
-
-    row.appendChild(dragBar);
-    row.appendChild(body);
-
-    // Drop target behavior (row body is a target; only the drag bar is draggable).
-    if (onReorderItem) {
-      row.addEventListener("dragover", (event) => {
-        if (!activeDragPlanItemId) {
-          return;
-        }
-
-        event.preventDefault();
-
-        const rect = row.getBoundingClientRect();
-        const before = event.clientY < rect.top + rect.height / 2;
-
-        row.classList.toggle("drop-before", before);
-        row.classList.toggle("drop-after", !before);
-
-        try {
-          event.dataTransfer.dropEffect = "move";
-        } catch {
-          // ignore
-        }
-      });
-
-      row.addEventListener("dragleave", () => {
-        row.classList.remove("drop-before", "drop-after");
-      });
-
-      row.addEventListener("drop", (event) => {
-        event.preventDefault();
-
-        const draggedIdRaw =
-          (event.dataTransfer && event.dataTransfer.getData("text/plain")) || null;
-        const draggedId = Number(draggedIdRaw || activeDragPlanItemId);
-        const targetId = planItem.id;
-
-        row.classList.remove("drop-before", "drop-after");
-
-        if (!Number.isFinite(draggedId) || draggedId === targetId) {
-          return;
-        }
-
-        const rect = row.getBoundingClientRect();
-        const before = event.clientY < rect.top + rect.height / 2;
-
-        onReorderItem(draggedId, targetId, { before });
-      });
-    }
-
-    if (activity && useState.interactive) {
-      row.addEventListener("click", () => onUseActivity(activity.id));
-    }
-
-    elements.planList.appendChild(row);
-  });
-}
-
-function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
-  elements.planSelect.innerHTML = "";
-
-  if (!currentProfileId) {
-    const option = document.createElement("option");
-    option.textContent = "Select a profile";
-    option.disabled = true;
-    option.selected = true;
-    elements.planSelect.appendChild(option);
-    elements.planSelect.disabled = true;
-    return;
-  }
-
-  if (!plans.length) {
-    const option = document.createElement("option");
-    option.textContent = "No plans";
-    option.disabled = true;
-    option.selected = true;
-    elements.planSelect.appendChild(option);
-    elements.planSelect.disabled = true;
-    return;
-  }
-
-  plans.forEach((plan) => {
-    const option = document.createElement("option");
-    option.value = String(plan.id);
-    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
-
-    if (plan.id === currentPlanId) {
-      option.selected = true;
-    }
-
-    elements.planSelect.appendChild(option);
-  });
-
-  elements.planSelect.disabled = false;
-}
-
-function createPlanSummary(planItemCount, planCount) {
-  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
-  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
-  return `${itemText} • ${planText}.`;
-}
-</file>
-
 <file path="src/features/tracks/tracks-controller.js">
 /**
  * @role controller
@@ -3735,7 +4605,7 @@ Do not treat speculative ideas, aspirational roadmap items, or earlier conversat
 
 - This is a static browser app with no build step.
 - `index.html` contains markup only.
-- `styles.css` contains styling only.
+- Styles are split across files under `styles/`, and stylesheet files contain styling only.
 - Prefer browser-native APIs over added dependencies.
 - Preserve compatibility with the existing IndexedDB database when possible.
 - File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.
@@ -4072,6 +4942,293 @@ export function renderActivities({
 
     elements.activityList.appendChild(row);
   });
+}
+</file>
+
+<file path="src/features/plans/plans-ui.js">
+/**
+ * @role renderer
+ * @owns planner plan-picker rendering, current-plan summary messaging, and current-plan item list rendering for the planner view
+ * @not-owns plan persistence, plan mutation rules, or activity launch behavior
+ * @notes Keep this file presentation-only.
+ */
+
+import { describeActivity, getActivityUseState } from "../activities/activities-ui.js";
+
+let activeDragPlanItemId = null;
+
+export function renderPlan({
+  elements,
+  currentProfileId,
+  plans,
+  currentPlanId,
+  plan,
+  planItems,
+  activitiesById,
+  tracks,
+  sectionsById,
+  onUseActivity,
+  onRemoveItem,
+  onReorderItem,
+}) {
+  renderPlanPicker(elements, {
+    currentProfileId,
+    plans,
+    currentPlanId,
+  });
+
+  elements.planName.textContent = plan?.name ?? "Current Plan";
+  elements.planList.innerHTML = "";
+
+  if (!currentProfileId) {
+    elements.planSummary.textContent = "Select a profile to work on a practice plan.";
+
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Select a profile to create, load, and manage practice plans.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  elements.planSummary.textContent = createPlanSummary(planItems.length, plans.length);
+
+  if (!planItems.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent =
+      "Use Add to Plan from the activity library to build this plan, or save the current plan as a named plan for later.";
+    elements.planList.appendChild(empty);
+    return;
+  }
+
+  planItems.forEach((planItem, index) => {
+    const activity = activitiesById.get(planItem.activityId) ?? null;
+    const useState = activity
+      ? getActivityUseState(activity, { tracks, sectionsById })
+      : { interactive: false, label: "Unavailable" };
+
+    const row = document.createElement("div");
+    row.className = "section-row plan-item-row";
+    row.dataset.planItemId = String(planItem.id);
+
+    if (!useState.interactive) {
+      row.classList.add("is-static");
+    }
+
+    const dragBar = document.createElement("div");
+    dragBar.className = "card-drag-bar";
+    dragBar.draggable = true;
+    dragBar.setAttribute("role", "button");
+    dragBar.setAttribute("tabindex", "0");
+    dragBar.setAttribute("aria-label", "Drag to reorder");
+
+    const dragIcon = document.createElement("span");
+    dragIcon.className = "card-drag-icon";
+    dragIcon.textContent = "≡";
+
+    dragBar.appendChild(document.createElement("span")); // left spacer
+    dragBar.appendChild(dragIcon);
+
+    // Ensure the bar doesn't trigger row click behavior.
+    dragBar.addEventListener("click", (event) => event.stopPropagation());
+    dragBar.addEventListener("mousedown", (event) => event.stopPropagation());
+    dragBar.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+    let dragImageEl = null;
+
+    dragBar.addEventListener("dragstart", (event) => {
+      activeDragPlanItemId = planItem.id;
+      row.classList.add("is-dragging");
+
+      try {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(planItem.id));
+
+        // Use an offscreen clone as the drag image so the real row never reflows/resizes.
+        const rowRect = row.getBoundingClientRect();
+        const offsetX = Math.max(0, Math.min(rowRect.width, event.clientX - rowRect.left));
+        const offsetY = Math.max(0, Math.min(rowRect.height, event.clientY - rowRect.top));
+
+        const clone = row.cloneNode(true);
+        clone.classList.add("plan-item-drag-image");
+        clone.style.width = `${rowRect.width}px`;
+        clone.style.height = `${rowRect.height}px`;
+        clone.style.position = "fixed";
+        clone.style.top = "-10000px";
+        clone.style.left = "-10000px";
+        clone.style.margin = "0";
+        clone.style.pointerEvents = "none";
+        clone.style.boxSizing = "border-box";
+
+        document.body.appendChild(clone);
+        dragImageEl = clone;
+
+        event.dataTransfer.setDragImage(clone, offsetX, offsetY);
+      } catch {
+        // no-op: some browsers can throw if dataTransfer is unavailable
+      }
+    });
+
+    dragBar.addEventListener("dragend", () => {
+      activeDragPlanItemId = null;
+      row.classList.remove("is-dragging");
+      row.classList.remove("drop-before", "drop-after");
+
+      if (dragImageEl) {
+        dragImageEl.remove();
+        dragImageEl = null;
+      }
+    });
+
+    const body = document.createElement("div");
+    body.className = "plan-item-body";
+
+    const main = document.createElement("div");
+    main.className = "section-main";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    title.textContent = `${index + 1}. ${activity?.name ?? "Missing activity"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "section-meta";
+    meta.textContent = activity
+      ? describeActivity(activity, { tracks, sectionsById })
+      : "This plan item references an activity that no longer exists.";
+
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "section-actions";
+
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.textContent = useState.label;
+    useButton.disabled = !useState.interactive || !activity;
+    useButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      if (activity && useState.interactive) {
+        onUseActivity(activity.id);
+      }
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "danger";
+    removeButton.textContent = "Remove";
+    removeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onRemoveItem(planItem.id);
+    });
+
+    actions.appendChild(useButton);
+    actions.appendChild(removeButton);
+
+    body.appendChild(main);
+    body.appendChild(actions);
+
+    row.appendChild(dragBar);
+    row.appendChild(body);
+
+    // Drop target behavior (row body is a target; only the drag bar is draggable).
+    if (onReorderItem) {
+      row.addEventListener("dragover", (event) => {
+        if (!activeDragPlanItemId) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const rect = row.getBoundingClientRect();
+        const before = event.clientY < rect.top + rect.height / 2;
+
+        row.classList.toggle("drop-before", before);
+        row.classList.toggle("drop-after", !before);
+
+        try {
+          event.dataTransfer.dropEffect = "move";
+        } catch {
+          // ignore
+        }
+      });
+
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drop-before", "drop-after");
+      });
+
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+
+        const draggedIdRaw =
+          (event.dataTransfer && event.dataTransfer.getData("text/plain")) || null;
+        const draggedId = Number(draggedIdRaw || activeDragPlanItemId);
+        const targetId = planItem.id;
+
+        row.classList.remove("drop-before", "drop-after");
+
+        if (!Number.isFinite(draggedId) || draggedId === targetId) {
+          return;
+        }
+
+        const rect = row.getBoundingClientRect();
+        const before = event.clientY < rect.top + rect.height / 2;
+
+        onReorderItem(draggedId, targetId, { before });
+      });
+    }
+
+    if (activity && useState.interactive) {
+      row.addEventListener("click", () => onUseActivity(activity.id));
+    }
+
+    elements.planList.appendChild(row);
+  });
+}
+
+function renderPlanPicker(elements, { currentProfileId, plans, currentPlanId }) {
+  elements.planSelect.innerHTML = "";
+
+  if (!currentProfileId) {
+    const option = document.createElement("option");
+    option.textContent = "Select a profile";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  if (!plans.length) {
+    const option = document.createElement("option");
+    option.textContent = "No plans";
+    option.disabled = true;
+    option.selected = true;
+    elements.planSelect.appendChild(option);
+    elements.planSelect.disabled = true;
+    return;
+  }
+
+  plans.forEach((plan) => {
+    const option = document.createElement("option");
+    option.value = String(plan.id);
+    option.textContent = plan.isDefault ? `${plan.name} • current` : plan.name;
+
+    if (plan.id === currentPlanId) {
+      option.selected = true;
+    }
+
+    elements.planSelect.appendChild(option);
+  });
+
+  elements.planSelect.disabled = false;
+}
+
+function createPlanSummary(planItemCount, planCount) {
+  const itemText = `${planItemCount} activity item${planItemCount === 1 ? "" : "s"} in this plan`;
+  const planText = `${planCount} saved plan${planCount === 1 ? "" : "s"}`;
+  return `${itemText} • ${planText}.`;
 }
 </file>
 
@@ -5714,7 +6871,28 @@ function sortActivities(a, b) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Suzuki Practice Partner</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles/foundation/tokens.css" />
+  <link rel="stylesheet" href="./styles/foundation/base.css" />
+  <link rel="stylesheet" href="./styles/shell/shell.css" />
+  <link rel="stylesheet" href="./styles/layout/card.css" />
+  <link rel="stylesheet" href="./styles/layout/row.css" />
+  <link rel="stylesheet" href="./styles/layout/grids.css" />
+  <link rel="stylesheet" href="./styles/layout/panel-block.css" />
+  <link rel="stylesheet" href="./styles/layout/summary-bar.css" />
+  <link rel="stylesheet" href="./styles/layout/section-header.css" />
+  <link rel="stylesheet" href="./styles/ui/forms.css" />
+  <link rel="stylesheet" href="./styles/ui/buttons.css" />
+  <link rel="stylesheet" href="./styles/ui/checkbox.css" />
+  <link rel="stylesheet" href="./styles/ui/text.css" />
+  <link rel="stylesheet" href="./styles/ui/pills.css" />
+  <link rel="stylesheet" href="./styles/ui/section-list.css" />
+  <link rel="stylesheet" href="./styles/ui/empty-state.css" />
+  <link rel="stylesheet" href="./styles/components/waveform-player.css" />
+  <link rel="stylesheet" href="./styles/components/dialog.css" />
+  <link rel="stylesheet" href="./styles/components/plan-item.css" />
+  <link rel="stylesheet" href="./styles/responsive/shell.css" />
+  <link rel="stylesheet" href="./styles/responsive/layout.css" />
+  <link rel="stylesheet" href="./styles/responsive/components.css" />
 </head>
 <body>
   <section class="shell-toolbar">
@@ -5750,645 +6928,6 @@ function sortActivities(a, b) {
   <script type="module" src="./src/app/bootstrap.js"></script>
 </body>
 </html>
-</file>
-
-<file path="styles.css">
-/*
- * @role stylesheet
- * @owns presentation, layout, spacing, colors, responsive behavior, and component states
- * @not-owns markup structure or runtime behavior
- * @notes Keep behavioral decisions out of CSS; prefer styling-only changes here.
- */
-
-:root {
-  --bg: #f4f6f8;
-  --card: #ffffff;
-  --card-alt: #f8fafc;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --secondary: #e5e7eb;
-  --danger: #ef4444;
-  --danger-dark: #dc2626;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
-  --radius: 14px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--text);
-}
-
-.container {
-  width: min(1120px, calc(100% - 48px));
-  margin: 0 auto;
-}
-
-.app-shell {
-  padding: 20px 0 24px;
-}
-
-.shell-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  width: 100%;
-  background: rgba(244, 246, 248, 0.96);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
-}
-
-.shell-toolbar-inner {
-  padding: 14px 0;
-}
-
-.shell-toolbar-row {
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 0;
-}
-
-.shell-profile-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-h1 {
-  font-size: 24px;
-  margin: 0 0 6px;
-  font-weight: 700;
-}
-
-h2 {
-  font-size: 18px;
-  margin: 0;
-  font-weight: 650;
-}
-
-.card {
-  background: var(--card);
-  padding: 20px;
-  border-radius: var(--radius);
-  margin-bottom: 20px;
-  box-shadow: var(--shadow);
-}
-
-.row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.row:last-child {
-  margin-bottom: 0;
-}
-
-.route-nav {
-  display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.route-nav button.is-active,
-.route-nav button[aria-current="page"] {
-  background: var(--primary);
-  color: #fff;
-}
-
-.route-nav button.is-active:hover,
-.route-nav button[aria-current="page"]:hover {
-  background: var(--primary-dark);
-}
-
-.route-page {
-  min-height: 120px;
-}
-
-.planner-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.workspace-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.sidebar-stack {
-  display: grid;
-  gap: 20px;
-}
-
-.workspace-main-card {
-  overflow: hidden;
-}
-
-.panel-block {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.panel-block:last-child {
-  margin-bottom: 0;
-}
-
-.planner-summary-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-.planner-plan-toolbar {
-  align-items: end;
-}
-
-.planner-field-group {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 260px;
-}
-
-.planner-plan-select {
-  min-width: 0;
-  width: 100%;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-header-compact {
-  margin-bottom: 10px;
-}
-
-label {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-select,
-input[type="range"] {
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  background: #fff;
-}
-
-select {
-  min-width: 220px;
-  max-width: 100%;
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-button:hover {
-  background: var(--primary-dark);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-button.secondary {
-  background: var(--secondary);
-  color: var(--text);
-}
-
-button.secondary:hover {
-  background: #d1d5db;
-}
-
-button.danger {
-  background: var(--danger);
-  color: #fff;
-}
-
-button.danger:hover {
-  background: var(--danger-dark);
-}
-
-button:disabled,
-select:disabled,
-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-}
-
-.waveform-player {
-  display: grid;
-  gap: 12px;
-}
-
-.waveform-player-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.waveform-player-controls {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: end;
-}
-
-.waveform-player-field {
-  display: grid;
-  gap: 6px;
-  min-width: 220px;
-  flex: 1 1 260px;
-}
-
-.waveform-player-speed-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.waveform-player-speed-row input[type="range"] {
-  flex: 1 1 180px;
-  min-width: 160px;
-}
-
-.waveform-player-loop {
-  min-height: 40px;
-}
-
-.waveform-time {
-  white-space: nowrap;
-}
-
-.waveform-wrap {
-  width: 100%;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
-.waveform-canvas {
-  width: 100%;
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-}
-
-.mastery-pill {
-  background: #e0f2fe;
-  color: #0369a1;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.section-list {
-  display: grid;
-  gap: 12px;
-}
-
-.section-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card-alt);
-  cursor: pointer;
-}
-
-.section-row:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.section-row.is-active {
-  border-color: var(--primary);
-  background: #dbeafe;
-}
-
-.section-row.is-static {
-  cursor: default;
-}
-
-.section-row.is-static:hover {
-  border-color: var(--border);
-  background: var(--card-alt);
-}
-
-.section-main {
-  min-width: 0;
-}
-
-.section-title {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.section-meta {
-  color: var(--muted);
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.empty-state {
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 18px;
-  color: var(--muted);
-  background: var(--card-alt);
-}
-
-.small {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.plan-name {
-  margin-bottom: 4px;
-}
-
-/* Plan item drag affordance */
-
-.plan-item-row {
-  padding: 0;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 0;
-  overflow: hidden;
-}
-
-.plan-item-row:hover {
-  background: var(--card-alt);
-}
-
-.card-drag-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 22px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(229, 231, 235, 0.45);
-  cursor: grab;
-  user-select: none;
-}
-
-.card-drag-bar:active {
-  cursor: grabbing;
-}
-
-.card-drag-icon {
-  font-size: 16px;
-  line-height: 1;
-  color: var(--muted);
-}
-
-.plan-item-body {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-}
-
-.plan-item-row.is-dragging {
-  opacity: 0.75;
-}
-
-.plan-item-row.drop-before {
-  box-shadow: inset 0 3px 0 var(--primary);
-}
-
-.plan-item-row.drop-after {
-  box-shadow: inset 0 -3px 0 var(--primary);
-}
-
-/* Dialog */
-
-.app-dialog {
-  border: none;
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-  padding: 24px;
-  max-width: 420px;
-  width: calc(100% - 48px);
-  font-family: inherit;
-  color: var(--text);
-}
-
-.app-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.dialog-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 8px;
-}
-
-.dialog-title:empty {
-  display: none;
-}
-
-.dialog-message {
-  font-size: 14px;
-  color: var(--text);
-  margin: 0 0 16px;
-  line-height: 1.5;
-}
-
-.dialog-message:empty {
-  display: none;
-}
-
-.dialog-input,
-.dialog-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s ease;
-  background: #fff;
-}
-
-.dialog-input {
-  margin-bottom: 16px;
-}
-
-.dialog-textarea {
-  resize: vertical;
-  min-height: 88px;
-}
-
-.dialog-input:focus,
-.dialog-textarea:focus {
-  border-color: var(--primary);
-}
-
-.dialog-fields {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.dialog-field {
-  display: grid;
-  gap: 6px;
-}
-
-.dialog-field-label {
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-@media (max-width: 980px) {
-  .planner-grid,
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 720px) {
-  .container {
-    width: min(1120px, calc(100% - 32px));
-  }
-
-  .app-shell {
-    padding: 16px 0;
-  }
-
-  .shell-toolbar-row {
-    justify-content: flex-start;
-  }
-
-  .shell-profile-controls {
-    width: 100%;
-  }
-
-  .shell-profile-controls select {
-    flex: 1 1 220px;
-    min-width: 0;
-  }
-
-  .section-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .plan-item-body {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .section-actions {
-    justify-content: flex-start;
-  }
-
-  select {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .route-nav {
-    width: 100%;
-  }
-
-  .route-nav button {
-    flex: 1 1 0;
-  }
-
-  .planner-summary-bar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .planner-plan-toolbar {
-    align-items: stretch;
-  }
-
-  .waveform-player-toolbar,
-  .waveform-player-controls,
-  .waveform-player-speed-row {
-    align-items: stretch;
-  }
-
-  .waveform-time {
-    white-space: normal;
-  }
-}
 </file>
 
 </files>
@@ -6436,7 +6975,7 @@ Do not treat speculative ideas, aspirational roadmap items, or earlier conversat
 
 - This is a static browser app with no build step.
 - `index.html` contains markup only.
-- `styles.css` contains styling only.
+- Styles are split across files under `styles/`, and stylesheet files contain styling only.
 - Prefer browser-native APIs over added dependencies.
 - Preserve compatibility with the existing IndexedDB database when possible.
 - File-level ownership rules live in file headers for comment-capable files and are the authoritative source for deciding where changes belong.

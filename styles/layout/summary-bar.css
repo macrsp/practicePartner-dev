@@ -1,0 +1,34 @@
+/*
+ * @role stylesheet-part
+ * @owns planner summary bar and related field-group layout
+ * @not-owns button styling, select base styling, or route grid behavior
+ * @notes Keep this file scoped to shared planner summary and toolbar containers.
+ */
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}

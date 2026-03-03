@@ -1,0 +1,37 @@
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for persistent shell layout and navigation
+ * @not-owns desktop defaults, shared component styling, or route-specific behavior
+ * @notes Load this file after the base shell and UI files.
+ */
+
+@media (max-width: 720px) {
+  .container {
+    width: min(1120px, calc(100% - 32px));
+  }
+
+  .app-shell {
+    padding: 16px 0;
+  }
+
+  .shell-toolbar-row {
+    justify-content: flex-start;
+  }
+
+  .shell-profile-controls {
+    width: 100%;
+  }
+
+  .shell-profile-controls select {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .route-nav {
+    width: 100%;
+  }
+
+  .route-nav button {
+    flex: 1 1 0;
+  }
+}

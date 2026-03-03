@@ -1,0 +1,27 @@
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared form controls and component internals
+ * @not-owns desktop defaults, shell layout, or route grid structure
+ * @notes Keep this file focused on mobile overrides for reusable UI pieces.
+ */
+
+@media (max-width: 720px) {
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
+}

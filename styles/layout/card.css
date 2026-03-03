@@ -1,0 +1,14 @@
+/*
+ * @role stylesheet-part
+ * @owns shared card surface styling
+ * @not-owns grid layout, component-specific internals, or responsive overrides
+ * @notes Keep this file limited to the generic card container.
+ */
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}

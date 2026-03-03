@@ -1,0 +1,39 @@
+/*
+ * @role stylesheet-part
+ * @owns responsive adjustments for shared layout containers and list-row structure
+ * @not-owns desktop defaults, shell behavior, or waveform-player internals
+ * @notes Keep this file focused on structural mobile and tablet overrides.
+ */
+
+@media (max-width: 980px) {
+  .planner-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-item-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
+  }
+}

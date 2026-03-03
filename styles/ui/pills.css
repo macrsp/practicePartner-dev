@@ -1,0 +1,15 @@
+/*
+ * @role stylesheet-part
+ * @owns shared pill-style status and value display surfaces
+ * @not-owns waveform layout, text utilities, or route-level placement
+ * @notes Keep this file limited to reusable pill presentation.
+ */
+
+.mastery-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
