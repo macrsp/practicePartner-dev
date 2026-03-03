@@ -1,0 +1,48 @@
+/*
+ * @role stylesheet-part
+ * @owns shared button base styling and variant states
+ * @not-owns shell navigation active-state styling, layout, or component-specific placement
+ * @notes Keep this file limited to reusable button appearance rules.
+ */
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

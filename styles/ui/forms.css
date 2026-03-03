@@ -1,0 +1,26 @@
+/*
+ * @role stylesheet-part
+ * @owns shared form control presentation for selects and range inputs
+ * @not-owns dialog-specific field styling, button variants, or responsive layout rules
+ * @notes Keep this file limited to non-dialog form primitives.
+ */
+
+select,
+input[type="range"] {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+}
+
+select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

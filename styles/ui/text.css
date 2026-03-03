@@ -1,0 +1,15 @@
+/*
+ * @role stylesheet-part
+ * @owns small supporting text and simple text utility presentation
+ * @not-owns headings, layout, or component interaction states
+ * @notes Keep this file limited to shared low-emphasis text styles.
+ */
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-name {
+  margin-bottom: 4px;
+}

@@ -1,0 +1,13 @@
+/*
+ * @role stylesheet-part
+ * @owns shared checkbox-label inline layout styling
+ * @not-owns input control visuals, route layout, or responsive overrides
+ * @notes Keep this file limited to checkbox label composition.
+ */
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}

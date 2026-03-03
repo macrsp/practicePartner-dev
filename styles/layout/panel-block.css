@@ -1,0 +1,18 @@
+/*
+ * @role stylesheet-part
+ * @owns panel block surface styling inside larger cards
+ * @not-owns overall card styling, route grids, or panel-specific component content
+ * @notes Keep this file limited to nested panel containers.
+ */
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
