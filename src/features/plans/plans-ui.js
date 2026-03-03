@@ -93,6 +93,12 @@ export function renderPlan({
       try {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", String(planItem.id));
+
+        const rowRect = row.getBoundingClientRect();
+        const pointerOffsetX = Math.max(0, event.clientX - rowRect.left);
+        const pointerOffsetY = Math.max(0, event.clientY - rowRect.top);
+
+        event.dataTransfer.setDragImage(row, pointerOffsetX, pointerOffsetY);
       } catch {
         // no-op: some browsers can throw if dataTransfer is unavailable
       }
