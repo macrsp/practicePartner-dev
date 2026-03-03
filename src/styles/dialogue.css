@@ -1,0 +1,94 @@
+/*
+ * @role stylesheet-part
+ * @owns native dialog presentation, dialog field layout, and dialog action styling hooks
+ * @not-owns app shell layout, reusable button variants, or route-level component structure
+ * @notes Keep this file limited to the shared dialog surface and its internal fields.
+ */
+
+/* Dialog */
+
+.app-dialog {
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  font-family: inherit;
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.dialog-title:empty {
+  display: none;
+}
+
+.dialog-message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.dialog-message:empty {
+  display: none;
+}
+
+.dialog-input,
+.dialog-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+  background: #fff;
+}
+
+.dialog-input {
+  margin-bottom: 16px;
+}
+
+.dialog-textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.dialog-input:focus,
+.dialog-textarea:focus {
+  border-color: var(--primary);
+}
+
+.dialog-fields {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.dialog-field {
+  display: grid;
+  gap: 6px;
+}
+
+.dialog-field-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

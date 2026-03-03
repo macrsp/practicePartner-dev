@@ -1,0 +1,104 @@
+/*
+ * @role stylesheet-part
+ * @owns shared layout primitives, cards, route grids, summary bars, and section headers
+ * @not-owns button styling, dialog styling, or component-specific interaction states
+ * @notes Keep this file focused on structure, spacing, and layout composition.
+ */
+
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.route-page {
+  min-height: 120px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sidebar-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main-card {
+  overflow: hidden;
+}
+
+.panel-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
+}
+
+.planner-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-alt);
+}
+
+.planner-plan-toolbar {
+  align-items: end;
+}
+
+.planner-field-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.planner-plan-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-header-compact {
+  margin-bottom: 10px;
+}

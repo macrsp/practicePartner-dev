@@ -1,0 +1,87 @@
+/*
+ * @role stylesheet-part
+ * @owns responsive layout and component adjustments across shell, planner, workspace, and shared controls
+ * @not-owns default desktop styling or token definitions
+ * @notes Load this file last so responsive overrides remain easy to reason about.
+ */
+
+@media (max-width: 980px) {
+  .planner-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .container {
+    width: min(1120px, calc(100% - 32px));
+  }
+
+  .app-shell {
+    padding: 16px 0;
+  }
+
+  .shell-toolbar-row {
+    justify-content: flex-start;
+  }
+
+  .shell-profile-controls {
+    width: 100%;
+  }
+
+  .shell-profile-controls select {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-item-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-actions {
+    justify-content: flex-start;
+  }
+
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .route-nav {
+    width: 100%;
+  }
+
+  .route-nav button {
+    flex: 1 1 0;
+  }
+
+  .planner-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .planner-plan-toolbar {
+    align-items: stretch;
+  }
+
+  .waveform-player-toolbar,
+  .waveform-player-controls,
+  .waveform-player-speed-row {
+    align-items: stretch;
+  }
+
+  .waveform-time {
+    white-space: normal;
+  }
+}
