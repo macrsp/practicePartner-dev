@@ -425,10 +425,11 @@ input:disabled {
 }
 
 .card-drag-bar {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 22px;
+  height: 26px;
   padding: 0 10px;
   border-bottom: 1px solid var(--border);
   background: rgba(229, 231, 235, 0.45);

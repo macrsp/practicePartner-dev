@@ -86,6 +86,8 @@ export function renderPlan({
     dragBar.addEventListener("mousedown", (event) => event.stopPropagation());
     dragBar.addEventListener("pointerdown", (event) => event.stopPropagation());
 
+    let dragImageEl = null;
+
     dragBar.addEventListener("dragstart", (event) => {
       activeDragPlanItemId = planItem.id;
       row.classList.add("is-dragging");
@@ -94,11 +96,26 @@ export function renderPlan({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", String(planItem.id));
 
+        // Use an offscreen clone as the drag image so the real row never reflows/resizes.
         const rowRect = row.getBoundingClientRect();
-        const pointerOffsetX = Math.max(0, event.clientX - rowRect.left);
-        const pointerOffsetY = Math.max(0, event.clientY - rowRect.top);
+        const offsetX = Math.max(0, Math.min(rowRect.width, event.clientX - rowRect.left));
+        const offsetY = Math.max(0, Math.min(rowRect.height, event.clientY - rowRect.top));
 
-        event.dataTransfer.setDragImage(row, pointerOffsetX, pointerOffsetY);
+        const clone = row.cloneNode(true);
+        clone.classList.add("plan-item-drag-image");
+        clone.style.width = `${rowRect.width}px`;
+        clone.style.height = `${rowRect.height}px`;
+        clone.style.position = "fixed";
+        clone.style.top = "-10000px";
+        clone.style.left = "-10000px";
+        clone.style.margin = "0";
+        clone.style.pointerEvents = "none";
+        clone.style.boxSizing = "border-box";
+
+        document.body.appendChild(clone);
+        dragImageEl = clone;
+
+        event.dataTransfer.setDragImage(clone, offsetX, offsetY);
       } catch {
         // no-op: some browsers can throw if dataTransfer is unavailable
       }
@@ -108,6 +125,11 @@ export function renderPlan({
       activeDragPlanItemId = null;
       row.classList.remove("is-dragging");
       row.classList.remove("drop-before", "drop-after");
+
+      if (dragImageEl) {
+        dragImageEl.remove();
+        dragImageEl = null;
+      }
     });
 
     const body = document.createElement("div");
