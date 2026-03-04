@@ -46,6 +46,7 @@ The content is organized as follows:
 <directory_structure>
 .github/
   workflows/
+    build-context-slices.yml
     build-production-dist.yml
     update-repo-context.yml
 src/
@@ -160,6 +161,292 @@ This section contains the contents of the repository's files.
     "encoding": "o200k_base"
   }
 }
+</file>
+
+<file path=".github/workflows/build-context-slices.yml">
+# @role workflow
+# @owns on-demand generation of overlapping Repomix context slices for AI implementation sessions
+# @not-owns main repo-context generation, app runtime behavior, or Pages/deploy behavior
+# @notes Keeps slice definitions centralized in one workflow and uploads the generated XML files as a single artifact.
+
+name: Build Context Slices
+
+on:
+  workflow_dispatch:
+    inputs:
+      slice_set:
+        description: "Which slice set to build"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - 01-foundation-shell-and-routing
+          - 02-profiles-and-persistence
+          - 03-planner-activities-and-plans
+          - 04-audio-sections-and-execution
+          - 05-full-app-reference
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-context-slices-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-slices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate slice configs
+        env:
+          SLICE_SET: ${{ inputs.slice_set }}
+        run: |
+          mkdir -p .tmp/repomix-slices context-slices
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const requested = process.env.SLICE_SET || "all";
+
+          const baseConfig = {
+            "$schema": "https://repomix.com/schemas/latest/schema.json",
+            output: {
+              style: "xml",
+              instructionFilePath: "repomix-instruction.md",
+              fileSummary: true,
+              directoryStructure: true,
+              files: true,
+              removeComments: false,
+              removeEmptyLines: false,
+              includeEmptyDirectories: false,
+              includeFullDirectoryStructure: true,
+              git: {
+                sortByChanges: true,
+                includeDiffs: false,
+                includeLogs: false
+              }
+            },
+            ignore: {
+              useGitignore: true,
+              useDefaultPatterns: true,
+              customPatterns: [
+                "dist",
+                "repo-context.xml",
+                "context-slices",
+                ".tmp"
+              ]
+            },
+            security: {
+              enableSecurityCheck: true
+            },
+            tokenCount: {
+              encoding: "o200k_base"
+            }
+          };
+
+          const commonAlways = [
+            "planning-context.md",
+            "repomix-instruction.md",
+            "index.html",
+            "src/app/bootstrap.js",
+            "src/app/state.js",
+            "src/shared/constants.js"
+          ];
+
+          const slices = [
+            {
+              name: "01-foundation-shell-and-routing",
+              headerText:
+                "Slice 01: foundation shell, routing, repo rules, and workflow scaffolding. Use this when changing navigation, shell shape, repo automation, or cross-cutting app composition.",
+              include: [
+                ...commonAlways,
+                ".gitignore",
+                "repomix.config.json",
+                ".github/workflows/*.yml",
+                "src/app/router.js",
+                "src/shared/shell-ui.js",
+                "styles/foundation/*.css",
+                "styles/shell/*.css",
+                "styles/responsive/shell.css",
+                "styles/layout/grids.css"
+              ]
+            },
+            {
+              name: "02-profiles-and-persistence",
+              headerText:
+                "Slice 02: profile scope, IndexedDB schema, settings continuity, and persistence helpers. Use this when changing profile bootstrap, storage rules, or persisted user context.",
+              include: [
+                ...commonAlways,
+                "src/shared/dialog.js",
+                "src/persistence/db.js",
+                "src/persistence/activity-store.js",
+                "src/persistence/plan-store.js",
+                "src/features/profiles/profiles-controller.js",
+                "src/features/profiles/profiles-ui.js",
+                "src/features/tracks/music-folder-store.js",
+                "src/app/router.js",
+                "src/shared/utils.js"
+              ]
+            },
+            {
+              name: "03-planner-activities-and-plans",
+              headerText:
+                "Slice 03: planner flow, activity library, and current-plan composition. Use this when changing reusable activities, planner UX, plan persistence, or planner-to-execution launch behavior.",
+              include: [
+                ...commonAlways,
+                "src/app/router.js",
+                "src/shared/dialog.js",
+                "src/shared/utils.js",
+                "src/routes/planner/planner-route.js",
+                "src/features/activities/activities-controller.js",
+                "src/features/activities/activities-ui.js",
+                "src/features/plans/plans-controller.js",
+                "src/features/plans/plans-ui.js",
+                "src/persistence/activity-store.js",
+                "src/persistence/plan-store.js",
+                "src/persistence/db.js",
+                "styles/layout/grids.css",
+                "styles/layout/summary-bar.css",
+                "styles/layout/section-header.css",
+                "styles/components/plan-item.css",
+                "styles/ui/buttons.css",
+                "styles/ui/empty-state.css",
+                "styles/ui/section-list.css",
+                "styles/ui/text.css"
+              ]
+            },
+            {
+              name: "04-audio-sections-and-execution",
+              headerText:
+                "Slice 04: audio source selection, waveform interaction, saved sections, and current execution surface. Use this when changing playback, section flow, selection behavior, or the future workspace-to-drawer refactor.",
+              include: [
+                ...commonAlways,
+                "src/app/router.js",
+                "src/shared/dialog.js",
+                "src/shared/utils.js",
+                "src/shared/waveform.js",
+                "src/routes/workspace/workspace-route.js",
+                "src/features/tracks/music-folder-store.js",
+                "src/features/tracks/tracks-controller.js",
+                "src/features/tracks/tracks-ui.js",
+                "src/features/sections/sections-controller.js",
+                "src/features/sections/sections-ui.js",
+                "src/features/sections/selection-controller.js",
+                "src/features/activities/activities-controller.js",
+                "src/features/activities/activities-ui.js",
+                "src/persistence/db.js",
+                "src/persistence/activity-store.js",
+                "styles/layout/grids.css",
+                "styles/layout/panel-block.css",
+                "styles/layout/row.css",
+                "styles/layout/section-header.css",
+                "styles/components/waveform-player.css",
+                "styles/ui/buttons.css",
+                "styles/ui/checkbox.css",
+                "styles/ui/empty-state.css",
+                "styles/ui/forms.css",
+                "styles/ui/pills.css",
+                "styles/ui/section-list.css",
+                "styles/ui/text.css",
+                "styles/responsive/components.css",
+                "styles/responsive/layout.css"
+              ]
+            },
+            {
+              name: "05-full-app-reference",
+              headerText:
+                "Slice 05: full current app reference. Use this when the change cuts across multiple regions or when a narrower slice keeps missing needed context.",
+              include: [
+                ".gitignore",
+                "planning-context.md",
+                "repomix-instruction.md",
+                "repomix.config.json",
+                "index.html",
+                ".github/workflows/*.yml",
+                "src/**/*.js",
+                "styles/**/*.css"
+              ]
+            }
+          ];
+
+          const selected =
+            requested === "all"
+              ? slices
+              : slices.filter((slice) => slice.name === requested);
+
+          if (!selected.length) {
+            throw new Error(`Unknown slice_set: ${requested}`);
+          }
+
+          for (const slice of selected) {
+            const config = {
+              ...baseConfig,
+              output: {
+                ...baseConfig.output,
+                filePath: `context-slices/${slice.name}.xml`,
+                headerText: slice.headerText
+              },
+              include: slice.include
+            };
+
+            const configPath = path.join(
+              ".tmp",
+              "repomix-slices",
+              `${slice.name}.config.json`
+            );
+
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          }
+          NODE
+
+      - name: Build requested slices
+        run: |
+          for config in .tmp/repomix-slices/*.config.json; do
+            echo "Generating slice from $config"
+            npx --yes repomix@1.12.0 --config "$config"
+          done
+
+      - name: Write slice manifest
+        run: |
+          cat > context-slices/README.txt <<'EOF'
+          Context slices generated by Build Context Slices.
+
+          Files:
+          - 01-foundation-shell-and-routing.xml
+            Shell, routing, repository instructions, workflows, and cross-cutting composition context.
+
+          - 02-profiles-and-persistence.xml
+            Profiles, IndexedDB schema, persistence helpers, and continuity behavior.
+
+          - 03-planner-activities-and-plans.xml
+            Planner route, reusable activities, and current-plan composition.
+
+          - 04-audio-sections-and-execution.xml
+            Track loading, waveform playback, selection, sections, and current execution surface.
+
+          - 05-full-app-reference.xml
+            Full current app reference when narrower slices are not enough.
+          EOF
+
+      - name: Upload context slice artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-slices
+          path: context-slices
+          if-no-files-found: error
 </file>
 
 <file path="src/features/tracks/music-folder-store.js">
@@ -1439,6 +1726,80 @@ jobs:
           if-no-files-found: error
 </file>
 
+<file path=".github/workflows/update-repo-context.yml">
+# @role workflow
+# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
+# @not-owns application runtime behavior or repository architecture rules
+# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
+
+name: Update Repo Context
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths-ignore:
+      - repo-context.xml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-repo-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate repo context
+        run: npx --yes repomix@1.11.1 --config repomix.config.json
+
+      - name: Compute safe artifact name
+        shell: bash
+        run: |
+          raw_ref="${GITHUB_REF_NAME}"
+          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+
+          if [ -z "$safe_ref" ]; then
+            safe_ref="unnamed-ref"
+          fi
+
+          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
+
+      - name: Upload repo context artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-context-${{ env.safe_ref }}
+          path: repo-context.xml
+
+      - name: Commit updated repo context to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo-context.xml
+
+          if git diff --cached --quiet; then
+            echo "No repo context changes."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh repo context"
+          git push origin HEAD:${GITHUB_REF_NAME}
+</file>
+
 <file path="src/features/profiles/profiles-ui.js">
 /**
  * @role renderer
@@ -1871,80 +2232,6 @@ export function showFormPrompt(
     },
   });
 }
-</file>
-
-<file path=".github/workflows/update-repo-context.yml">
-# @role workflow
-# @owns regeneration and commit-back of repo-context.xml on non-main branch updates
-# @not-owns application runtime behavior or repository architecture rules
-# @notes Sanitize branch names before using them in artifact names because Git refs may contain characters invalid for artifact naming.
-
-name: Update Repo Context
-
-on:
-  push:
-    branches-ignore:
-      - main
-    paths-ignore:
-      - repo-context.xml
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: update-repo-context-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Generate repo context
-        run: npx --yes repomix@1.11.1 --config repomix.config.json
-
-      - name: Compute safe artifact name
-        shell: bash
-        run: |
-          raw_ref="${GITHUB_REF_NAME}"
-          safe_ref="$(printf '%s' "$raw_ref" | sed 's/[":<>|*?\\/\r\n]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
-
-          if [ -z "$safe_ref" ]; then
-            safe_ref="unnamed-ref"
-          fi
-
-          echo "safe_ref=$safe_ref" >> "$GITHUB_ENV"
-
-      - name: Upload repo context artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: repo-context-${{ env.safe_ref }}
-          path: repo-context.xml
-
-      - name: Commit updated repo context to branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repo-context.xml
-
-          if git diff --cached --quiet; then
-            echo "No repo context changes."
-            exit 0
-          fi
-
-          git commit -m "chore: refresh repo context"
-          git push origin HEAD:${GITHUB_REF_NAME}
 </file>
 
 <file path="src/features/sections/sections-ui.js">
